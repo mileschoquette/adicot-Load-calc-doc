@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Past Jobs — HVAC Loads PDF Pipeline{% endblock %}
+{% block content %}
+
+<h2>Past Jobs</h2>
+
+{% if entries %}
+  <table class="jobs">
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Address</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+        <tr>
+          <td><a href="{{ url_for('results', job_id=e.job_id) }}">{{ e.project_name }}</a></td>
+          <td class="muted">{{ e.address }}</td>
+          <td class="muted">{{ e.mtime | int }}</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_job', job_id=e.job_id) }}"
+                  style="display:inline" onsubmit="return confirm('Delete this job?')">
+              <button type="submit" class="danger-link">delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="muted">No past jobs yet. <a href="{{ url_for('index') }}">Create one</a>.</p>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.project_name }} — Results{% endblock %}
+{% block content %}
+
+<h2>{{ meta.project_name }}</h2>
+<p class="muted">Source: {{ meta.html_name }}</p>
+
+<section class="downloads">
+  <h3>Deliverables</h3>
+  <ul class="file-list">
+    {% for kind, path in meta.files.items() %}
+      <li>
+        <a href="{{ url_for('download', job_id=job_id, filename=path) }}" download>
+          {{ path.split('/')[-1] }}
+        </a>
+        <span class="muted">({{ kind.replace('_', ' ') }})</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section>
+  <h3>Preview — sanity check the numbers</h3>
+  <p class="muted">Same three tables shown in the PDFs. Use this to verify before sending.</p>
+  <pre class="console-preview">{{ meta.preview }}</pre>
+</section>
+
+<section>
+  <h3>Settings used</h3>
+  <table class="settings">
+    <tr><th>Project address</th><td>{{ meta.config.project_address }}</td></tr>
+    <tr><th>Engineer</th><td>{{ meta.engineer.name }} &lt;{{ meta.engineer.email }}&gt;</td></tr>
+    <tr><th>Toilet exhaust CFM</th><td>{{ meta.config.toilet_exhaust_cfm }}</td></tr>
+    <tr><th>Bldg exhaust = all toilet</th><td>{{ "Yes" if meta.config.bldg_exhaust_all_toilet else "No" }}</td></tr>
+    {% if meta.zone_overrides %}
+      <tr>
+        <th>Zone overrides</th>
+        <td>
+          {% for src, ov in meta.zone_overrides.items() %}
+            <div><strong>{{ src }}</strong> &rarr; {{ ov }}</div>
+          {% endfor %}
+        </td>
+      </tr>
+    {% endif %}
+  </table>
+</section>
+
+<p class="actions">
+  <a href="{{ url_for('index') }}" class="button">Generate another</a>
+</p>
+
+{% endblock %}
