@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}New Job — HVAC Loads PDF Pipeline{% endblock %}
+{% block content %}
+
+<h2>New Job</h2>
+<p class="muted">Upload a Design Master HVAC HTML export, set the project address, and generate the three PDF deliverables.</p>
+
+<form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="job-form">
+
+  <section>
+    <h3>1. Design Master HTML</h3>
+    <div class="field">
+      <label for="html_file">HTML file</label>
+      <input type="file" name="html_file" id="html_file" accept=".html,.htm" required>
+      <small>The "Save loads HTML" export from Design Master HVAC.</small>
+    </div>
+  </section>
+
+  <section>
+    <h3>2. Project address</h3>
+    <p class="muted">This is the only field that isn't in the HTML. Goes on the Load Summary cover page as "Address".</p>
+    <div class="field">
+      <label for="project_address">Address</label>
+      <input type="text" name="project_address" id="project_address"
+             placeholder="4333 S Tamiami Tr, Suite D, Sarasota, FL 34231" required>
+    </div>
+  </section>
+
+  <section>
+    <h3>3. Project settings</h3>
+    <div class="field">
+      <label for="toilet_exhaust_cfm">Toilet exhaust per fixture (CFM)</label>
+      <input type="number" name="toilet_exhaust_cfm" id="toilet_exhaust_cfm" value="70" min="0" step="1">
+      <small>FL = 70 typical. Used for spaces tagged with the TOILET exhaust rule.</small>
+    </div>
+    <div class="field-row">
+      <label class="checkbox">
+        <input type="checkbox" name="bldg_exhaust_all_toilet" id="bldg_exhaust_all_toilet">
+        <span>All building exhaust is intermittent toilet/accessory exhaust</span>
+      </label>
+      <small>When checked: Bldg Exhaust column zeros out on the Air Balance and the IMC 403.4.2 footnote is added.</small>
+    </div>
+  </section>
+
+  <section>
+    <h3>4. Engineer (signature block)</h3>
+    <p class="muted">Defaults to Adicot's Florida PE. Override per project if needed.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="engineer_name">Name</label>
+        <input type="text" name="engineer_name" id="engineer_name" value="Adrienne Gould-Choquette">
+      </div>
+      <div class="field">
+        <label for="engineer_state">State</label>
+        <input type="text" name="engineer_state" id="engineer_state" value="Florida">
+      </div>
+      <div class="field">
+        <label for="engineer_email">Email</label>
+        <input type="email" name="engineer_email" id="engineer_email" value="agc@adicot.com">
+      </div>
+      <div class="field">
+        <label for="engineer_phone">Phone</label>
+        <input type="text" name="engineer_phone" id="engineer_phone" value="(804-787-0468)">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>5. Zone overrides <span class="optional">(optional)</span></h3>
+    <p class="muted">Leave blank to use the zone names from Design Master and the auto-snapped tonnage. Override only if you want to rename, force a different equipment size, override supply CFM, or merge two HTML zones into one deliverable row.</p>
+
+    <div id="overrides-list">
+      <!-- Override rows get injected here -->
+    </div>
+    <button type="button" id="add-override-btn">+ Add zone override</button>
+    <small class="muted">Tip: leave <em>Match</em> blank to ignore a row.</small>
+  </section>
+
+  <div class="submit-row">
+    <button type="submit" class="primary">Generate PDFs</button>
+  </div>
+</form>
+
+<template id="override-row-template">
+  <div class="override-row">
+    <div class="field">
+      <label>HTML zone name <small>(match)</small></label>
+      <input type="text" name="ov_match_INDEX" placeholder="Zone Left Clinic North">
+    </div>
+    <div class="field">
+      <label>Display name</label>
+      <input type="text" name="ov_display_INDEX" placeholder="Zone RTU-2: SURGERY/TREAT/HYG">
+    </div>
+    <div class="grid-3">
+      <div class="field">
+        <label>Tons</label>
+        <input type="number" name="ov_tons_INDEX" step="0.5" placeholder="3.5">
+      </div>
+      <div class="field">
+        <label>Supply CFM</label>
+        <input type="number" name="ov_supply_INDEX" step="50" placeholder="1400">
+      </div>
+      <div class="field">
+        <label>Merge into</label>
+        <input type="text" name="ov_merge_INDEX" placeholder="Zone Left Clinic North">
+      </div>
+    </div>
+    <button type="button" class="remove-override">Remove</button>
+  </div>
+</template>
+
+<script>
+(function() {
+  const list = document.getElementById('overrides-list');
+  const tpl = document.getElementById('override-row-template');
+  const addBtn = document.getElementById('add-override-btn');
+  let counter = 0;
+
+  function addRow() {
+    const clone = tpl.content.cloneNode(true);
+    const html = clone.firstElementChild.outerHTML.replace(/INDEX/g, counter);
+    list.insertAdjacentHTML('beforeend', html);
+    counter += 1;
+  }
+
+  addBtn.addEventListener('click', addRow);
+
+  list.addEventListener('click', (e) => {
+    if (e.target.classList.contains('remove-override')) {
+      e.target.closest('.override-row').remove();
+    }
+  });
+})();
+</script>
+
+{% endblock %}
