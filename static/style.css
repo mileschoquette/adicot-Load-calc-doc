@@ -298,3 +298,79 @@ footer {
   font-size: 0.85rem;
   text-align: center;
 }
+
+.tab-strip {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 2px solid #d0d7de;
+  margin-bottom: 1.5rem;
+  gap: 0.25rem;
+}
+.tab-strip .tab {
+  padding: 0.6rem 1.1rem;
+  text-decoration: none;
+  color: #57606a;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.tab-strip .tab:hover:not(.disabled):not(.active) {
+  color: #24292f;
+  background-color: #f6f8fa;
+}
+.tab-strip .tab.active {
+  color: #0969da;
+  border-bottom-color: #0969da;
+  font-weight: 600;
+}
+.tab-strip .tab.disabled {
+  color: #afb8c1;
+  cursor: not-allowed;
+}
+.tab-strip .tab-right { margin-left: auto; }
+
+/* ── Charts grid ── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+.chart-card {
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 0;
+}
+.chart-card img { width: 100%; height: auto; display: block; }
+.chart-card figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #57606a;
+  text-align: center;
+}
+
+/* ── Duct sizing preview table ── */
+.duct-preview { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+.duct-preview th, .duct-preview td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid #eaeef2;
+  text-align: left;
+}
+.duct-preview th { background: #f6f8fa; font-weight: 600; }
+.duct-preview td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.duct-preview tr.zone-row { font-weight: 600; background: #f6f8fa; }
+.duct-preview tr.room-row td:first-child { padding-left: 2rem; }
+
+/* ── Helpers ── */
+.muted        { color: #57606a; }
+.small        { font-size: 0.85rem; }
+.warn         { color: #9a6700; background: #fff8c5; padding: 0.6rem 0.9rem;
+                border-radius: 4px; }
+.btn-primary  { display: inline-block; padding: 0.5rem 1rem; background: #0969da;
+                color: #fff; text-decoration: none; border-radius: 6px;
+                font-weight: 500; }
+.btn-primary:hover { background: #0860c4; }
+
