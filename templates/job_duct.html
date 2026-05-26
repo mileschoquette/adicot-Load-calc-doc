@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{# Duct Sizing tab — editable Current CFM with live recalc.
+   Edits are visual-only; the engineer is expected to update Design Master
+   and re-run the load calc to make changes stick. Any edited cell is
+   highlighted so it's obvious which rooms still need to be updated upstream. #}
+
+{% block content %}
+  {% include "_tabs.html" %}
+
+  <section class="job-header">
+    <h2>Duct Sizing — {{ meta.project_name }}</h2>
+    <p class="muted">{{ meta.project_address }}</p>
+  </section>
+
+  <section>
+    <p class="muted">
+      The <strong>Current CFM</strong> column is preloaded from the load calc.
+      Edit any room to play with the numbers — edited rows are highlighted in
+      yellow as a reminder to update the value in Design Master and re-run the
+      load calc. Edits here are <strong>not saved</strong>; reload the page
+      to reset.
+    </p>
+    <p class="muted small">
+      Deficiency flags any room where Current is under Required by more than
+      13 CFM. Bath / restroom / corridor / WIC rooms are exempt regardless.
+      Zone rows flag any time the zone Current doesn't match the sum of room
+      Currents.
+    </p>
+  </section>
+
+  <section>
+    <table class="duct-preview" id="duct-table">
+      <thead>
+        <tr>
+          <th>Location</th>
+          <th>Required CFM</th>
+          <th>Current CFM</th>
+          <th>Deficiency</th>
+          <th>Room Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in supply_rows %}
+          <tr class="{% if row.is_zone %}zone-row{% else %}room-row{% endif %}"
+              data-row-index="{{ loop.index0 }}"
+              data-zone-index="{{ row.zone_index }}"
+              data-is-zone="{{ '1' if row.is_zone else '0' }}"
+              data-required="{{ row.required_raw }}"
+              data-initial-current="{{ row.current_raw if row.current_raw is not none else 0 }}"
+              data-room-type="{{ row.room_type }}">
+            <td>{{ row.location }}</td>
+            <td class="num required-cell">{{ row.required }}</td>
+            <td class="num current-cell">
+              {% if row.is_zone %}
+                <span class="zone-current-display">{{ row.current }}</span>
+              {% else %}
+                <input type="number"
+                       class="current-input"
+                       step="1"
+                       min="0"
+                       value="{{ row.current_raw if row.current_raw is not none else 0 }}"
+                       aria-label="Current CFM for {{ row.location }}">
+              {% endif %}
+            </td>
+            <td class="num deficiency-cell"></td>
+            <td>{{ row.room_type }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {# ── Live recalc + edited-row highlighting ──────────────────────── #}
+  <script>
+    (function () {
+      const THRESHOLD = 13;  // CFM gap that triggers deficiency on non-exempt rooms
+      const EXEMPT_TYPES = new Set([
+        "bath", "rr or corridor", "restroom", "toilet", "WIC", "Corridor"
+      ]);
+
+      const rows = Array.from(document.querySelectorAll("#duct-table tbody tr"));
+
+      // Group rows by zone for fast rollup
+      const zonesByIndex = new Map();
+      for (const tr of rows) {
+        const zi = tr.dataset.zoneIndex;
+        if (!zonesByIndex.has(zi)) zonesByIndex.set(zi, { zoneRow: null, roomRows: [] });
+        if (tr.dataset.isZone === "1") zonesByIndex.get(zi).zoneRow = tr;
+        else                            zonesByIndex.get(zi).roomRows.push(tr);
+      }
+
+      function num(v) {
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function fmt(n) {
+        return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+      }
+
+      function recalcAll() {
+        for (const { zoneRow, roomRows } of zonesByIndex.values()) {
+          let zoneCurrent = 0;
+
+          for (const r of roomRows) {
+            const req = num(r.dataset.required);
+            const initial = num(r.dataset.initialCurrent);
+            const input = r.querySelector(".current-input");
+            const cur = num(input.value);
+            zoneCurrent += cur;
+
+            // Highlight when the engineer has changed the value from its initial.
+            // "Different from what the load calc currently says" is what matters —
+            // those are the rooms that need to be re-entered upstream in Design
+            // Master and re-run before the change is real.
+            r.classList.toggle("edited", cur !== initial);
+
+            const exempt = EXEMPT_TYPES.has(r.dataset.roomType);
+            const gap = req - cur;
+            const defCell = r.querySelector(".deficiency-cell");
+            if (cur === 0 && req === 0) {
+              defCell.textContent = "";
+            } else if (exempt) {
+              defCell.textContent = gap > THRESHOLD ? fmt(gap) : "";
+            } else {
+              defCell.textContent = gap > 0 ? fmt(gap) : "";
+            }
+          }
+
+          if (zoneRow) {
+            const display = zoneRow.querySelector(".zone-current-display");
+            if (display) display.textContent = fmt(zoneCurrent);
+            // Zone-row CHECK: zone Current vs zone Required (sum of room Required)
+            const zoneRequired = roomRows.reduce((s, r) => s + num(r.dataset.required), 0);
+            const defCell = zoneRow.querySelector(".deficiency-cell");
+            defCell.textContent = (zoneCurrent !== zoneRequired) ? "CHECK" : "";
+            // Zone row is "edited" if any of its rooms is edited
+            const anyEdited = roomRows.some(r => r.classList.contains("edited"));
+            zoneRow.classList.toggle("edited", anyEdited);
+          }
+        }
+      }
+
+      for (const input of document.querySelectorAll(".current-input")) {
+        input.addEventListener("input", recalcAll);
+      }
+
+      recalcAll();
+    })();
+  </script>
+{% endblock %}
