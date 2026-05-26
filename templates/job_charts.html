@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{# Charts tab — server-rendered PNGs. #}
+
+{% block content %}
+  {% include "_tabs.html" %}
+
+  <section class="job-header">
+    <h2>Charts — {{ meta.project_name }}</h2>
+    <p class="muted">{{ meta.project_address }}</p>
+  </section>
+
+  {% if charts|length == 0 %}
+    <p class="warn">No charts were rendered for this job. This usually means the HTML
+       export was missing the cooling-load tables.</p>
+  {% endif %}
+
+  <div class="charts-grid">
+    {% for chart in charts %}
+      <figure class="chart-card">
+        <img src="{{ url_for('download_chart', job_id=job_id, filename=chart.name) }}"
+             alt="{{ chart.caption }}"
+             loading="lazy">
+        <figcaption>{{ chart.caption }}</figcaption>
+      </figure>
+    {% endfor %}
+  </div>
+
+  <p class="muted small">
+    Internal loads (lighting / equipment / people) are not shown on the cooling
+    breakdown pies because they live at the room level and aren't zone-tagged in
+    Phase 1 output. Return and exhaust CFM aren't shown on Air Balance for the
+    same reason. Both depend on Phase 2 integration.
+  </p>
+{% endblock %}

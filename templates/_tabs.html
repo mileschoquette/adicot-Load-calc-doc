@@ -1,0 +1,29 @@
+{# ─────────────────────────────────────────────────────────
+   Tab strip — included at the top of every page.
+   Pass `active_tab` ("pdfs"|"duct"|"charts"|"jobs"|"upload")
+   and `job_id` (or None) from the view.
+
+   Route names match your existing app.py:
+     index       — upload form
+     results     — PDFs tab (renamed conceptually but route unchanged)
+     job_duct    — NEW
+     job_charts  — NEW
+     past_jobs   — Past jobs index
+   ───────────────────────────────────────────────────────── #}
+<nav class="tab-strip" aria-label="Job tabs">
+  {% if job_id %}
+    <a class="tab {% if active_tab == 'pdfs' %}active{% endif %}"
+       href="{{ url_for('results', job_id=job_id) }}">PDFs</a>
+    <a class="tab {% if active_tab == 'duct' %}active{% endif %}"
+       href="{{ url_for('job_duct', job_id=job_id) }}">Duct Sizing</a>
+    <a class="tab {% if active_tab == 'charts' %}active{% endif %}"
+       href="{{ url_for('job_charts', job_id=job_id) }}">Charts</a>
+  {% else %}
+    <a class="tab {% if active_tab == 'upload' %}active{% endif %}"
+       href="{{ url_for('index') }}">Upload</a>
+    <span class="tab disabled" title="Upload an HTML to enable">Duct Sizing</span>
+    <span class="tab disabled" title="Upload an HTML to enable">Charts</span>
+  {% endif %}
+  <a class="tab tab-right {% if active_tab == 'jobs' %}active{% endif %}"
+     href="{{ url_for('past_jobs') }}">Past Jobs</a>
+</nav>
