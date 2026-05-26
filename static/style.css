@@ -387,3 +387,70 @@ footer {
   background: transparent;        /* let the row's yellow show through the input */
   font-weight: 600;
 }
+
+.wix-mismatch-banner {
+  background: #fff8c5;             /* soft yellow (same as .warn used for edits) */
+  border: 1px solid #d4a72c;
+  border-left: 5px solid #d4a72c;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.wix-mismatch-banner h3 {
+  margin: 0 0 0.5rem 0;
+  color: #6f5500;
+}
+
+.wix-mismatch-banner p {
+  margin: 0 0 0.75rem 0;
+}
+
+.mismatch-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  background: #fffef5;
+  border: 1px solid #e6d98a;
+}
+
+.mismatch-table th,
+.mismatch-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e6d98a;
+  text-align: left;
+  vertical-align: top;
+}
+
+.mismatch-table th {
+  background: #fff3a3;
+  font-weight: 600;
+  color: #6f5500;
+}
+
+.mismatch-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ── Wix validation banner: success state ── */
+.wix-ok-banner {
+  background: #dafbe1;             /* soft green */
+  border: 1px solid #6fd384;
+  border-left: 5px solid #2da44e;
+  border-radius: 6px;
+  padding: 0.6rem 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.wix-ok-banner p {
+  margin: 0;
+  color: #145923;
+  font-weight: 500;
+}
+
+/* ── Wix autocomplete hint state (Phase 2 visual polish) ── */
+#address-hint.linked {
+  color: #145923;
+  font-weight: 500;
+}
+
