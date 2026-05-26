@@ -325,8 +325,13 @@ def upload():
             else:
                 report = None
     except Exception:
-        (job_dir / "error.log").write_text(traceback.format_exc())
-        flash("The pipeline failed — check error.log in the job directory.")
+        tb = traceback.format_exc()
+        (job_dir / "error.log").write_text(tb)
+        print("=" * 60, flush=True)
+        print(f"PIPELINE FAILURE for job {job_id}:", flush=True)
+        print(tb, flush=True)
+        print("=" * 60, flush=True)
+        flash("The pipeline failed — check the Render logs for the traceback.")
         return redirect(url_for("index"))
 
     # ── NEW: persist parsed report so all tabs can read it without re-parsing ──
