@@ -374,3 +374,16 @@ footer {
                 font-weight: 500; }
 .btn-primary:hover { background: #0860c4; }
 
+.duct-preview tr.edited {
+  background: #fff8c5;            /* soft yellow — same as .warn background */
+}
+.duct-preview tr.edited td {
+  border-bottom-color: #d4a72c;   /* darker yellow grid line on edited rows */
+}
+.duct-preview tr.edited.zone-row {
+  background: #fff3a3;            /* a touch deeper for zone rows */
+}
+.duct-preview tr.edited input.current-input {
+  background: transparent;        /* let the row's yellow show through the input */
+  font-weight: 600;
+}
