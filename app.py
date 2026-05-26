@@ -380,15 +380,20 @@ def upload():
     project_name = report.project.project_name if report is not None else "(unknown)"
     meta = {
         "project_name":    project_name,
-        "project_address": project_address,
-        "toilet_exhaust":  toilet_exhaust,
-        "engineer":        {
+        "html_name":       html_path.name,
+        "preview":         preview_buf.getvalue(),
+        "engineer": {
             "name":  engineer_name,
             "email": engineer_email,
             "phone": engineer_phone,
             "state": engineer_state,
         },
-        "preview":         preview_buf.getvalue(),
+        "config": {
+            "project_address":          project_address,
+            "toilet_exhaust_cfm":       toilet_exhaust,
+            "bldg_exhaust_all_toilet":  False,
+        },
+        "zone_overrides": {},
     }
     (job_dir / "meta.json").write_text(json.dumps(meta, indent=2))
 
