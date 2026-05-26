@@ -9,12 +9,12 @@
 <section class="downloads">
   <h3>Deliverables</h3>
   <ul class="file-list">
-    {% for kind, path in meta.files.items() %}
+    {% for pdf in pdfs %}
       <li>
-        <a href="{{ url_for('download', job_id=job_id, filename=path) }}" download>
-          {{ path.split('/')[-1] }}
+        <a href="{{ url_for('download_file', job_id=job_id, filename=pdf.name) }}">
+          {{ pdf.name }}
         </a>
-        <span class="muted">({{ kind.replace('_', ' ') }})</span>
+        <span class="muted">({{ pdf.size_kb }} KB)</span>
       </li>
     {% endfor %}
   </ul>
