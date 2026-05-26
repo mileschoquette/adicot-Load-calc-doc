@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}New Job — HVAC Loads PDF Pipeline{% endblock %}
+{% block content %}
+{% include "_tabs.html" %}
+
+<h2>New Job</h2>
+<p class="muted">Upload a Design Master HVAC HTML export, set the project address, and generate the three PDF deliverables.</p>
+
+<form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="job-form">
+
+  <section>
+    <h3>1. Design Master HTML</h3>
+    <div class="field">
+      <label for="html_file">HTML file</label>
+      <input type="file" name="html_file" id="html_file" accept=".html,.htm" required>
+      <small>The "Save loads HTML" export from Design Master HVAC.</small>
+    </div>
+  </section>
+
+  <section>
+    <h3>2. Project address</h3>
+    <p class="muted">Search the Adicot CMS by project address. If your project isn't there yet, type the address manually and the job will run without Wix validation.</p>
+    <div class="field">
+      <label for="project_address">Address</label>
+      <input type="text"
+             name="project_address"
+             id="project_address"
+             list="wix-projects"
+             autocomplete="off"
+             placeholder="4333 S Tamiami Tr, Suite D, Sarasota, FL 34231"
+             required>
+      <datalist id="wix-projects">
+        {% for p in wix_projects %}
+          <option value="{{ p.label }}"
+                  data-id="{{ p._id }}"
+                  data-address="{{ p.projectAddress }}"></option>
+        {% endfor %}
+      </datalist>
+      <small id="address-hint">Type to search Wix projects, or just type a one-off address.</small>
+
+      {# Hidden field that carries the Wix _id ONLY when a suggestion is picked.
+         Cleared if the engineer edits the input afterwards. #}
+      <input type="hidden" name="wix_item_id" id="wix_item_id" value="">
+    </div>
+  </section>
+
+  <section>
+    <h3>3. Project settings</h3>
+    <div class="field">
+      <label for="toilet_exhaust_cfm">Toilet exhaust per fixture (CFM)</label>
+      <input type="number" name="toilet_exhaust_cfm" id="toilet_exhaust_cfm" value="70" min="0" step="1">
+      <small>FL = 70 typical. Used for spaces tagged with the TOILET exhaust rule.</small>
+    </div>
+    <div class="field-row">
+      <label class="checkbox">
+        <input type="checkbox" name="bldg_exhaust_all_toilet" id="bldg_exhaust_all_toilet">
+        <span>All building exhaust is intermittent toilet/accessory exhaust</span>
+      </label>
+      <small>When checked: Bldg Exhaust column zeros out on the Air Balance and the IMC 403.4.2 footnote is added.</small>
+    </div>
+  </section>
+
+  <section>
+    <h3>4. Engineer (signature block)</h3>
+    <p class="muted">Defaults to Adicot's Florida PE. Override per project if needed.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="engineer_name">Name</label>
+        <input type="text" name="engineer_name" id="engineer_name" value="Adrienne Gould-Choquette">
+      </div>
+      <div class="field">
+        <label for="engineer_state">State</label>
+        <input type="text" name="engineer_state" id="engineer_state" value="Florida">
+      </div>
+      <div class="field">
+        <label for="engineer_email">Email</label>
+        <input type="email" name="engineer_email" id="engineer_email" value="agc@adicot.com">
+      </div>
+      <div class="field">
+        <label for="engineer_phone">Phone</label>
+        <input type="text" name="engineer_phone" id="engineer_phone" value="(804-787-0468)">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>5. Zone overrides <span class="optional">(optional)</span></h3>
+    <p class="muted">Leave blank to use the zone names from Design Master and the auto-snapped tonnage. Override only if you want to rename, force a different equipment size, override supply CFM, or merge two HTML zones into one deliverable row.</p>
+
+    <div id="overrides-list">
+      <!-- Override rows get injected here -->
+    </div>
+    <button type="button" id="add-override-btn">+ Add zone override</button>
+    <small class="muted">Tip: leave <em>Match</em> blank to ignore a row.</small>
+  </section>
+
+  <div class="submit-row">
+    <button type="submit" class="primary">Generate PDFs</button>
+  </div>
+</form>
+
+<template id="override-row-template">
+  <div class="override-row">
+    <div class="field">
+      <label>HTML zone name <small>(match)</small></label>
+      <input type="text" name="ov_match_INDEX" placeholder="Zone Left Clinic North">
+    </div>
+    <div class="field">
+      <label>Display name</label>
+      <input type="text" name="ov_display_INDEX" placeholder="Zone RTU-2: SURGERY/TREAT/HYG">
+    </div>
+    <div class="grid-3">
+      <div class="field">
+        <label>Tons</label>
+        <input type="number" name="ov_tons_INDEX" step="0.5" placeholder="3.5">
+      </div>
+      <div class="field">
+        <label>Supply CFM</label>
+        <input type="number" name="ov_supply_INDEX" step="50" placeholder="1400">
+      </div>
+      <div class="field">
+        <label>Merge into</label>
+        <input type="text" name="ov_merge_INDEX" placeholder="Zone Left Clinic North">
+      </div>
+    </div>
+    <button type="button" class="remove-override">Remove</button>
+  </div>
+</template>
+
+<script>
+// ── Zone-override row management (unchanged) ──
+(function() {
+  const list = document.getElementById('overrides-list');
+  const tpl = document.getElementById('override-row-template');
+  const addBtn = document.getElementById('add-override-btn');
+  let counter = 0;
+
+  function addRow() {
+    const clone = tpl.content.cloneNode(true);
+    const html = clone.firstElementChild.outerHTML.replace(/INDEX/g, counter);
+    list.insertAdjacentHTML('beforeend', html);
+    counter += 1;
+  }
+
+  addBtn.addEventListener('click', addRow);
+
+  list.addEventListener('click', (e) => {
+    if (e.target.classList.contains('remove-override')) {
+      e.target.closest('.override-row').remove();
+    }
+  });
+})();
+
+// ── Wix autocomplete: detect pick vs manual type ──
+//
+// When the engineer picks a Wix project from the autocomplete suggestions:
+//   1. The input's value becomes the option's `value` attribute (the label)
+//   2. We look that label up in our map to find the matching <option>
+//   3. We grab the Wix _id and real address from the option's data-* attrs
+//   4. We replace the input's value with just the address (no Job No suffix)
+//      so the form submits the actual address as project_address
+//   5. We set the hidden wix_item_id so the backend knows to validate
+//
+// Strict-pick: typing text that happens to match an option's value WITHOUT
+// triggering the datalist's selection event still counts as "picked" because
+// the browser fires 'input' with the matching value either way. That's the
+// behavior we want — if the engineer wants to skip validation, they need to
+// type something that differs from any suggestion.
+(function () {
+  const addrInput = document.getElementById("project_address");
+  const datalist  = document.getElementById("wix-projects");
+  const hiddenId  = document.getElementById("wix_item_id");
+  const hint      = document.getElementById("address-hint");
+
+  // Build a map: label → option element. Datalist options have empty .text
+  // and the visible part lives in the `value` attribute, which is what the
+  // browser sets the input to on selection.
+  const labelToOption = new Map();
+  for (const opt of datalist.options) {
+    labelToOption.set(opt.value, opt);
+  }
+
+  // Once we've successfully auto-filled the address from a pick, we don't
+  // want our own input change to count as "user editing away from the pick"
+  // and immediately clear the link. This flag suppresses one event cycle.
+  let programmaticChange = false;
+
+  function clearWixLink() {
+    if (!hiddenId.value) return;  // already cleared, nothing to do
+    hiddenId.value = "";
+    hint.textContent = "Typing manually — this job will run without Wix validation.";
+    hint.classList.remove("linked");
+  }
+
+  function setWixLink(opt) {
+    hiddenId.value = opt.dataset.id || "";
+    hint.textContent = "Linked to Wix project — envelope/specs will be validated.";
+    hint.classList.add("linked");
+
+    const realAddress = (opt.dataset.address || "").trim();
+    if (realAddress && addrInput.value !== realAddress) {
+      programmaticChange = true;
+      addrInput.value = realAddress;
+    }
+  }
+
+  addrInput.addEventListener("input", () => {
+    if (programmaticChange) {
+      programmaticChange = false;
+      return;
+    }
+    const v = addrInput.value;
+    if (labelToOption.has(v)) {
+      setWixLink(labelToOption.get(v));
+    } else {
+      clearWixLink();
+    }
+  });
+})();
+</script>
+
+{% endblock %}
