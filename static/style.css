@@ -454,3 +454,43 @@ footer {
   font-weight: 500;
 }
 
+.drive-status {
+  margin: 0.75rem 0;
+}
+.drive-status p {
+  margin: 0.25rem 0;
+}
+#drive-status-loading {
+  color: #57606a;
+  padding: 0.75rem 1rem;
+}
+#drive-status-found {
+  background: #dafbe1;
+  border: 1px solid #6fd384;
+  border-left: 5px solid #2da44e;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+.drive-found {
+  color: #145923;
+  font-weight: 500;
+}
+#drive-status-not-found {
+  background: #fff8c5;
+  border: 1px solid #d4a72c;
+  border-left: 5px solid #d4a72c;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+.drive-not-found {
+  color: #6f5500;
+  font-weight: 500;
+}
+.drive-status code {
+  background: rgba(0,0,0,0.06);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+
