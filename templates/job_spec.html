@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Specifications</h2>
+<p class="muted">
+  Division&nbsp;23 mechanical specification for this project. Equipment values are
+  pre-filled from the CMS record; confirm or override, set the few project-specific
+  options, then generate the AutoCAD&nbsp;DXF for your sheet. Code editions come from
+  the project's state ({{ state_info.state_full or state or "unknown" }}).
+</p>
+
+<form method="post" action="{{ url_for('job_spec_save', job_id=job_id) }}" class="job-form">
+
+  <section>
+    <h3 style="margin-top:0;">Equipment <span class="spec-src spec-src-cms">from CMS &middot; equipment selection</span></h3>
+    <div class="grid-2">
+      <div class="field">
+        <label for="systemType">System type</label>
+        <select name="systemType" id="systemType">
+          {% set st = inputs.get('systemType','') %}
+          <option value="RTU"     {{ 'selected' if st=='RTU' }}>RTU (packaged rooftop)</option>
+          <option value="package" {{ 'selected' if st=='package' }}>Packaged (other)</option>
+          <option value="split"   {{ 'selected' if st=='split' }}>Split system</option>
+          <option value="VRF"     {{ 'selected' if st=='VRF' }}>VRF</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="heatType">Heat type</label>
+        <select name="heatType" id="heatType">
+          {% set ht = inputs.get('heatType','') %}
+          <option value="gas furnace" {{ 'selected' if ht=='gas furnace' }}>Gas furnace</option>
+          <option value="heat pump"   {{ 'selected' if ht=='heat pump' }}>Heat pump</option>
+          <option value="heat strip"  {{ 'selected' if ht=='heat strip' }}>Heat strip</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="acMounting">Mounting</label>
+        <select name="acMounting" id="acMounting">
+          {% set m = inputs.get('acMounting','') %}
+          <option value="RTU"      {{ 'selected' if m=='RTU' }}>RTU / roof</option>
+          <option value="slab"     {{ 'selected' if m=='slab' }}>Slab</option>
+          <option value="sidewall" {{ 'selected' if m=='sidewall' }}>Sidewall</option>
+          <option value="other"    {{ 'selected' if m=='other' }}>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="maxSystemCFM">Max single-system CFM</label>
+        <input type="number" name="maxSystemCFM" id="maxSystemCFM"
+               value="{{ inputs.get('maxSystemCFM','') }}" min="0" step="50">
+        <small>Gates the smoke-detection shutdown section (&ge; 2000 CFM).</small>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3 style="margin-top:0;">Project conditions <span class="spec-src spec-src-prop">from CMS &middot; proposal / spec</span></h3>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasOutsideAir" {{ 'checked' if inputs.get('hasOutsideAir') }}> Has outside air</label></div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasExhaust" {{ 'checked' if inputs.get('hasExhaust') }}> Has exhaust</label></div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="ceilingConcealedGWB" {{ 'checked' if inputs.get('ceilingConcealedGWB') }}> Concealed / GWB ceiling (gates access panels)</label></div>
+  </section>
+
+  <section>
+    <h3 style="margin-top:0;">Spec options <span class="spec-src spec-src-user">select for this project</span></h3>
+    <div class="field" style="max-width:280px;">
+      <label for="tbMode">Testing &amp; balancing</label>
+      <select name="tbMode" id="tbMode">
+        {% set tb = inputs.get('tbMode','recommend') %}
+        <option value="recommend" {{ 'selected' if tb=='recommend' }}>Recommend</option>
+        <option value="require"   {{ 'selected' if tb=='require' }}>Require</option>
+        <option value="omit"      {{ 'selected' if tb=='omit' }}>Omit</option>
+      </select>
+    </div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasVavOrFireSmoke" {{ 'checked' if inputs.get('hasVavOrFireSmoke') }}> VAV boxes / fire / smoke dampers (adds relief doors)</label></div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasExistingControls" {{ 'checked' if inputs.get('hasExistingControls') }}> Tie into existing control system</label></div>
+
+    <div class="submit-row"><button type="submit" class="primary">Update preview</button></div>
+  </section>
+</form>
+
+{% if warnings %}
+<div class="warn" style="margin:1rem 0;">
+  <strong>Missing values:</strong>
+  <ul style="margin:.4rem 0 0 1.2rem;">{% for w in warnings|unique %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:1.5rem;">
+  <h3 style="margin:0;">Preview <span class="muted small">(SPEC NOTES shown here are stripped from the DXF)</span></h3>
+  <form method="post" action="{{ url_for('job_spec_dxf', job_id=job_id) }}" style="margin:0;">
+    <button type="submit" class="btn-primary">Generate AutoCAD DXF</button>
+  </form>
+</div>
+
+<div class="spec-preview">
+  {% for part in spec.parts %}
+    {% for section in part.sections %}
+      <div class="spec-section">{{ section.num }}&nbsp;&nbsp;{{ section.title }}</div>
+      {% for clause in section.clauses %}
+        <div class="spec-clause"><span class="spec-label">{{ clause.label }}</span><span class="spec-text">{{ clause.text }}</span></div>
+        {% if clause.note %}<div class="spec-note">SPEC NOTE: {{ clause.note }}</div>{% endif %}
+      {% endfor %}
+    {% endfor %}
+  {% else %}
+    <p class="muted">No clauses match the current inputs.</p>
+  {% endfor %}
+</div>
+
+<style>
+.spec-src { font-size:.7rem; font-weight:500; padding:2px 8px; border-radius:4px; margin-left:.5rem; vertical-align:middle; }
+.spec-src-cms  { background:#fbeaf0; color:#993556; }
+.spec-src-prop { background:#e6f1fb; color:#0c447c; }
+.spec-src-user { background:#faeeda; color:#633806; }
+.spec-preview { background:#fff; border:1px solid var(--border); border-radius:6px; padding:1.5rem 1.75rem; margin-top:.75rem; font-size:.9rem; line-height:1.5; }
+.spec-section { font-weight:600; margin:.9rem 0 .35rem; padding-bottom:2px; border-bottom:1px solid var(--border); }
+.spec-section:first-child { margin-top:0; }
+.spec-clause { display:flex; gap:.6rem; padding-left:1.5rem; margin-bottom:.35rem; }
+.spec-label { flex:0 0 1.4rem; font-weight:500; }
+.spec-text { flex:1; }
+.spec-note { padding-left:3rem; font-size:.78rem; font-style:italic; color:var(--muted); margin-bottom:.4rem; }
+</style>
+
+{% endblock %}
