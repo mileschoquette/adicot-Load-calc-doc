@@ -1,0 +1,474 @@
+{
+  "parts": [
+    {
+      "partKey": "spec",
+      "title": "MECHANICAL SPECIFICATIONS",
+      "sortOrder": 1
+    }
+  ],
+  "sections": [
+    {
+      "sectionKey": "230500",
+      "partKey": "spec",
+      "title": "COMMON WORK RESULTS FOR HVAC",
+      "sortOrder": 10,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "230529",
+      "partKey": "spec",
+      "title": "HANGERS & SUPPORTS",
+      "sortOrder": 20,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "230553",
+      "partKey": "spec",
+      "title": "IDENTIFICATION",
+      "sortOrder": 30,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "230593",
+      "partKey": "spec",
+      "title": "TESTING, ADJUSTING & BALANCING",
+      "sortOrder": 40,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "230700",
+      "partKey": "spec",
+      "title": "HVAC INSULATION",
+      "sortOrder": 50,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "230900",
+      "partKey": "spec",
+      "title": "INSTRUMENTATION & CONTROLS",
+      "sortOrder": 60,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "230933",
+      "partKey": "spec",
+      "title": "SMOKE-DETECTION SHUTDOWN",
+      "sortOrder": 70,
+      "conditions": "{\"field\":\"maxSystemCFM\",\"op\":\">=\",\"value\":2000}"
+    },
+    {
+      "sectionKey": "233100",
+      "partKey": "spec",
+      "title": "HVAC DUCTS & CASINGS",
+      "sortOrder": 80,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "233300",
+      "partKey": "spec",
+      "title": "AIR DUCT ACCESSORIES",
+      "sortOrder": 90,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "233423",
+      "partKey": "spec",
+      "title": "HVAC POWER VENTILATORS & EXHAUST",
+      "sortOrder": 100,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "233700",
+      "partKey": "spec",
+      "title": "AIR OUTLETS & INLETS",
+      "sortOrder": 110,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "237400",
+      "partKey": "spec",
+      "title": "PACKAGED & DECENTRALIZED HVAC EQUIPMENT",
+      "sortOrder": 120,
+      "conditions": ""
+    },
+    {
+      "sectionKey": "019100",
+      "partKey": "spec",
+      "title": "EXECUTION & CLOSEOUT",
+      "sortOrder": 130,
+      "conditions": ""
+    }
+  ],
+  "clauses": [
+    {
+      "clauseId": "scope",
+      "sectionKey": "230500",
+      "sortOrder": 10,
+      "body": "{{scopeText}}",
+      "conditions": "",
+      "fields": "[{\"key\":\"scopeText\",\"label\":\"Scope sentence\",\"source\":\"cms.scopeText\",\"default\":\"Provide new HVAC systems and ductwork.\",\"type\":\"text\"}]",
+      "note": "Pre-filled from CMS (new/existing/both + systems); editable.",
+      "active": true
+    },
+    {
+      "clauseId": "codes",
+      "sectionKey": "230500",
+      "sortOrder": 20,
+      "body": "Work shall conform to the codes and standards governing this project: {{code.fbc}}; {{code.fmc}}; {{code.fecc}}; {{code.nec}}; NFPA 90A; and SMACNA duct construction standards. All equipment UL-listed.",
+      "conditions": "",
+      "fields": "",
+      "note": "All governing codes enumerated, from STATE_TABLE + standards.",
+      "active": true
+    },
+    {
+      "clauseId": "genconditions",
+      "sectionKey": "230500",
+      "sortOrder": 30,
+      "body": "The General Conditions of the Contract govern coordination, bidding, site examination, and construction-phase administration. The Engineer's scope is design and permit; construction-phase services are not included. Drawings are schematic; provide all labor and materials to complete the work shown.",
+      "conditions": "",
+      "fields": "",
+      "note": "Single paragraph replacing ~8 old contract-admin clauses.",
+      "active": true
+    },
+    {
+      "clauseId": "submittals",
+      "sectionKey": "230500",
+      "sortOrder": 40,
+      "body": "Submit product data, shop drawings, and O&M data. Named products establish a standard of quality; substitutions are permitted if the Contractor demonstrates equal or better performance against every stated requirement.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "designcond",
+      "sectionKey": "230500",
+      "sortOrder": 50,
+      "body": "Systems are sized to: outdoor {{loadcalc.outdoorDB}} °F DB / {{loadcalc.outdoorWB}} °F WB; indoor {{loadcalc.indoorDB}} °F. Equipment shall meet the design loads established by the Engineer's calculations.",
+      "conditions": "",
+      "fields": "[{\"key\":\"loadcalc.outdoorDB\",\"label\":\"Outdoor DB °F\",\"source\":\"loadcalc.outdoorDB\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"loadcalc.outdoorWB\",\"label\":\"Outdoor WB °F\",\"source\":\"loadcalc.outdoorWB\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"loadcalc.indoorDB\",\"label\":\"Indoor DB °F\",\"source\":\"loadcalc.indoorDB\",\"default\":\"\",\"type\":\"text\"}]",
+      "note": "ID/OD pulled from load calc.",
+      "active": true
+    },
+    {
+      "clauseId": "recordwarranty",
+      "sectionKey": "230500",
+      "sortOrder": 60,
+      "body": "Maintain as-built records of concealed work, including buried utility dimensions from building walls; deliver at closeout. Warrant work free of defects for one year from final acceptance. Provide {{boundCopies}} bound set(s) of warranties, manuals, and parts lists.",
+      "conditions": "",
+      "fields": "[{\"key\":\"boundCopies\",\"label\":\"Bound copies\",\"source\":\"manual\",\"default\":\"1\",\"type\":\"number\"}]",
+      "note": "boundCopies default 1, editable.",
+      "active": true
+    },
+    {
+      "clauseId": "hangers",
+      "sectionKey": "230529",
+      "sortOrder": 10,
+      "body": "Support all equipment, ductwork, and piping from the building structure — not from the ceiling or ceiling suspension system. Provide supports rated for the load, sized and spaced per SMACNA and manufacturer requirements.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "identification",
+      "sectionKey": "230553",
+      "sortOrder": 10,
+      "body": "Provide permanent metal identification tags with engraved unit/tag numbers for new equipment, piping, and valves. Mark concealed condensate terminations as primary or secondary.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "tab-test",
+      "sectionKey": "230593",
+      "sortOrder": 10,
+      "body": "Test all mechanical systems per {{code.fmc}}; obtain inspector approval.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "tab-balance",
+      "sectionKey": "230593",
+      "sortOrder": 20,
+      "body": "{{tbModeClause}}",
+      "conditions": "{\"field\":\"tbMode\",\"op\":\"!=\",\"value\":\"omit\"}",
+      "fields": "[{\"key\":\"tbMode\",\"label\":\"T&B mode (require/recommend/omit)\",\"source\":\"manual\",\"default\":\"recommend\",\"type\":\"select\"},{\"key\":\"tbModeClause\",\"label\":\"T&B clause text (auto)\",\"source\":\"auto.tbModeClause\",\"default\":\"\",\"type\":\"text\"}]",
+      "note": "tbMode 3-way. REQUIRE → 'An independent AABC/NEBB agency shall balance all HVAC equipment.' RECOMMEND → 'Independent AABC/NEBB balancing is recommended.' OMIT → drops. Default recommend.",
+      "active": true
+    },
+    {
+      "clauseId": "insulation",
+      "sectionKey": "230700",
+      "sortOrder": 10,
+      "body": "Insulate ductwork and condensate piping where required to prevent condensation and meet {{code.fecc}}. Insulation, fittings, and finishes: flame-spread ≤ 25, smoke-developed ≤ 50, per NFPA 90A.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "ctrl-tstat",
+      "sectionKey": "230900",
+      "sortOrder": 10,
+      "body": "Provide a programmable thermostat for each {{thermostatScope}} air-conditioning system. Mount sensors at 4'-6\" AFF unless noted; coordinate locations and finishes.",
+      "conditions": "",
+      "fields": "[{\"key\":\"thermostatScope\",\"label\":\"Thermostat scope (new/existing/both)\",\"source\":\"cms.thermostatScope\",\"default\":\"new and existing\",\"type\":\"select\"}]",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "ctrl-interlock",
+      "sectionKey": "230900",
+      "sortOrder": 20,
+      "body": "Interlock exhaust and outdoor-air fans with the air handler serving the space.",
+      "conditions": "{\"any\":[{\"field\":\"hasExhaust\",\"op\":\"truthy\"},{\"field\":\"hasOutsideAir\",\"op\":\"truthy\"}]}",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "ctrl-restroom",
+      "sectionKey": "230900",
+      "sortOrder": 30,
+      "body": "Control 120-volt restroom exhaust fans (≤ 800 W) by occupancy sensor with adjustable time delay, initially 20 minutes.",
+      "conditions": "{\"field\":\"hasExhaust\",\"op\":\"truthy\"}",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "ctrl-timeclock",
+      "sectionKey": "230900",
+      "sortOrder": 40,
+      "body": "Provide a time clock for outdoor-air fans; coordinate occupancy schedules with the Owner.",
+      "conditions": "{\"field\":\"hasOutsideAir\",\"op\":\"truthy\"}",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "ctrl-existing",
+      "sectionKey": "230900",
+      "sortOrder": 50,
+      "body": "Integrate new equipment and controls into the existing control system, including all associated costs; provide a complete control description with schematics.",
+      "conditions": "{\"field\":\"hasExistingControls\",\"op\":\"truthy\"}",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "smoke-shutdown",
+      "sectionKey": "230933",
+      "sortOrder": 10,
+      "body": "Air-handling systems exceeding 2000 CFM shall shut down automatically on smoke detection (supply after filters/before branches; return before exhaust/OA connections), with one manual emergency shutoff, per NFPA 90A. Include annual testing in O&M instructions.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "duct-construct",
+      "sectionKey": "233100",
+      "sortOrder": 10,
+      "body": "Construct and seal ductwork per SMACNA and {{code.fecc}}; sealed against leakage with non-hardening, non-migrating sealant. Duct dimensions shown are inside-clear. Provide flexible connections at equipment.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "duct-flex",
+      "sectionKey": "233100",
+      "sortOrder": 20,
+      "body": "Flexible duct: maximum length {{flexDuctMaxLen}}; centerline bend radius ≥ 1.5 diameters; sag ≤ ½\" per foot; supported ≤ 5'-0\" on-center without constriction.",
+      "conditions": "",
+      "fields": "[{\"key\":\"flexDuctMaxLen\",\"label\":\"Max flexible duct length\",\"source\":\"manual\",\"default\":\"10'-0\\\"\",\"type\":\"text\"}]",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "duct-verify",
+      "sectionKey": "233100",
+      "sortOrder": 30,
+      "body": "Field-verify duct routing and coordinate with other services and ceiling elevations.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "acc-dampers",
+      "sectionKey": "233300",
+      "sortOrder": 10,
+      "body": "Provide a volume damper at every branch, outlet, and takeoff; mark open/closed positions with a durable locking quadrant.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "acc-panels",
+      "sectionKey": "233300",
+      "sortOrder": 20,
+      "body": "Provide access panels for dampers, detectors, and serviceable devices concealed above non-accessible (gypsum/plaster) ceilings; fire-rating to match the penetrated assembly, minimum 1 hour. Identify each with a hanging marker.",
+      "conditions": "{\"field\":\"ceilingConcealedGWB\",\"op\":\"truthy\"}",
+      "fields": "",
+      "note": "Manual toggle per project (concealed/GWB ceiling).",
+      "active": true
+    },
+    {
+      "clauseId": "acc-relief",
+      "sectionKey": "233300",
+      "sortOrder": 30,
+      "body": "Provide pressure-relief doors in supply and return ductwork for systems with VAV boxes, motorized dampers, or fire/smoke dampers, sized to protect the system during damper closure. Basis of design: Ruskin PRD-18 / NRD-18 or equal.",
+      "conditions": "{\"field\":\"hasVavOrFireSmoke\",\"op\":\"truthy\"}",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "exh-intake",
+      "sectionKey": "233423",
+      "sortOrder": 10,
+      "body": "Outdoor-air intakes ≥ 10'-0\" from any exhaust outlet or vent (unless the vent is ≥ 2' above the intake). Screen intakes and outlets (¼\"–½\" mesh). Provide motorized dampers on outdoor-air ducts, opening in occupied mode.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "exh-ducts",
+      "sectionKey": "233423",
+      "sortOrder": 20,
+      "body": "Exhaust and ventilation ducts: smooth-interior metal, terminating at an exterior cap or hood; provide back-draft dampers at fans. Dryer-exhaust ductwork: rigid metal, supported ≤ 4' on-center.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "exh-special",
+      "sectionKey": "233423",
+      "sortOrder": 30,
+      "body": "{{exhaustSpecial}}",
+      "conditions": "{\"field\":\"exhaustSpecial\",\"op\":\"truthy\"}",
+      "fields": "[{\"key\":\"exhaustSpecial\",\"label\":\"Exhaust type-specific requirements\",\"source\":\"manual\",\"default\":\"\",\"type\":\"text\"}]",
+      "note": "Preselected from CMS exhaust data, editable. Type-specific clauses (grease, fume, toilet flex-metal exception) render here.",
+      "active": true
+    },
+    {
+      "clauseId": "air-devices",
+      "sectionKey": "233700",
+      "sortOrder": 10,
+      "body": "Provide diffusers, registers, and grilles coordinated with ceiling type and finish; verify locations against architectural reflected-ceiling plans and resolve conflicts before ordering. Seal register boxes airtight at the connection.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "air-protect",
+      "sectionKey": "233700",
+      "sortOrder": 20,
+      "body": "Keep openings covered after rough-in; do not operate the system before final startup.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "eq-performance",
+      "sectionKey": "237400",
+      "sortOrder": 10,
+      "body": "Provide factory-assembled, factory-tested, UL-listed {{systemType}} equipment selected to meet: cooling ≥ {{loadcalc.coolingTons}} tons; heating ≥ {{loadcalc.heatingBtuh}} Btu/h by {{heatType}}; supply ≥ {{loadcalc.supplyCFM}} CFM; minimum efficiency {{seer2}} SEER2. Basis of design: {{manufacturer}} or equal.",
+      "conditions": "",
+      "fields": "[{\"key\":\"systemType\",\"label\":\"System type\",\"source\":\"cms.systemType\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"loadcalc.coolingTons\",\"label\":\"Cooling tons\",\"source\":\"loadcalc.coolingTons\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"loadcalc.heatingBtuh\",\"label\":\"Heating Btu/h\",\"source\":\"loadcalc.heatingBtuh\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"heatType\",\"label\":\"Heat type\",\"source\":\"cms.heatType\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"loadcalc.supplyCFM\",\"label\":\"Supply CFM\",\"source\":\"loadcalc.supplyCFM\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"seer2\",\"label\":\"SEER2\",\"source\":\"cms.seer2\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"manufacturer\",\"label\":\"Manufacturer (basis of design)\",\"source\":\"cms.manufacturer\",\"default\":\"\",\"type\":\"text\"}]",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "eq-disclaimer",
+      "sectionKey": "237400",
+      "sortOrder": 20,
+      "body": "Off-the-shelf listed equipment is factory-engineered. The Engineer's services cover system design and application of listed equipment, not the internal design of the listed equipment.",
+      "conditions": "",
+      "fields": "",
+      "note": "Jurisdiction-requested disclaimer, reworded. PRESCRIPTIVE/legal — keep verbatim.",
+      "active": true
+    },
+    {
+      "clauseId": "eq-mount",
+      "sectionKey": "237400",
+      "sortOrder": 30,
+      "body": "Mount on {{acMounting}}. {{roofCurbSentence}}",
+      "conditions": "",
+      "fields": "[{\"key\":\"acMounting\",\"label\":\"AC mounting\",\"source\":\"cms.acMounting\",\"default\":\"\",\"type\":\"text\"},{\"key\":\"roofCurbSentence\",\"label\":\"Roof-curb sentence (auto)\",\"source\":\"auto.roofCurb\",\"default\":\"\",\"type\":\"text\"}]",
+      "note": "roofCurbSentence auto-fills 'For roof-mounted equipment, set on a factory curb at the height required by [code.roofCurbTable].' only when acMounting = RTU/roof; blank otherwise.",
+      "active": true
+    },
+    {
+      "clauseId": "eq-vibration",
+      "sectionKey": "237400",
+      "sortOrder": 40,
+      "body": "Provide vibration isolation preventing objectionable transmission to structure or occupied space. {{dxProtectionSentence}}",
+      "conditions": "",
+      "fields": "[{\"key\":\"dxProtectionSentence\",\"label\":\"DX/electric-heat sentence (auto)\",\"source\":\"auto.dxProtection\",\"default\":\"\",\"type\":\"text\"}]",
+      "note": "dxProtectionSentence auto-fills 'Provide DX-equipment protection — anti-short-cycle, head- and pressure-controls — and electric-heat capacities per schedule.' UNLESS heatType = heat pump.",
+      "active": true
+    },
+    {
+      "clauseId": "eq-filter",
+      "sectionKey": "237400",
+      "sortOrder": 50,
+      "body": "Filtration: serviceable section accepting standard filters; provide {{spareFilterSets}} spare set(s) at closeout.",
+      "conditions": "",
+      "fields": "[{\"key\":\"spareFilterSets\",\"label\":\"Spare filter sets\",\"source\":\"manual\",\"default\":\"1\",\"type\":\"number\"}]",
+      "note": "spareFilterSets default 1.",
+      "active": true
+    },
+    {
+      "clauseId": "eq-condensate",
+      "sectionKey": "237400",
+      "sortOrder": 60,
+      "body": "Condensate: drain to an approved point, trapped and sized per {{code.fmc}}, insulated within conditioned space; corrosion-resistant, code-accepted material. Provide drain-pan safety cut-off; prove at startup.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "eq-refrig",
+      "sectionKey": "237400",
+      "sortOrder": 70,
+      "body": "Refrigerant piping: size and route per manufacturer requirements; weatherproof jackets where exposed; sleeve and protect where below-grade or through foundations per {{code.fpc}}.",
+      "conditions": "{\"field\":\"hasRefrigerantLines\",\"op\":\"truthy\"}",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "exec-install",
+      "sectionKey": "019100",
+      "sortOrder": 10,
+      "body": "Install per manufacturer instructions and the equipment listing; where these conflict with the Contract Documents, request clarification before proceeding. Coordinate routing and offsets to avoid conflicts with other trades.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    },
+    {
+      "clauseId": "exec-closeout",
+      "sectionKey": "019100",
+      "sortOrder": 20,
+      "body": "At closeout, clean coils, pans, and drains; replace filters and belts; provide record documents and Owner training on operation and maintenance.",
+      "conditions": "",
+      "fields": "",
+      "note": "",
+      "active": true
+    }
+  ]
+}
