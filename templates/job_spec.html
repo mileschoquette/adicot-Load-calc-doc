@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "_tabs.html" %}
+
+<h2>Specifications</h2>
+<p class="muted">
+  Division&nbsp;23 mechanical specification for this project. Equipment values are
+  pre-filled from the CMS record; confirm or override, set the few project-specific
+  options, then click Save to generate a copy-ready spec below.
+  Code editions come from the project's state ({{ state_info.state_full or state or "unknown" }}).
+</p>
+
+<form method="post" action="{{ url_for('job_spec_save', job_id=job_id) }}" class="job-form">
+
+  <section>
+    <h3 style="margin-top:0;">Equipment <span class="spec-src spec-src-cms">from CMS &middot; equipment selection</span></h3>
+    <div class="grid-2">
+      <div class="field">
+        <label for="systemType">System type</label>
+        <select name="systemType" id="systemType">
+          {% set st = inputs.get('systemType','') %}
+          <option value="RTU"     {{ 'selected' if st=='RTU' }}>RTU (packaged rooftop)</option>
+          <option value="package" {{ 'selected' if st=='package' }}>Packaged (other)</option>
+          <option value="split"   {{ 'selected' if st=='split' }}>Split system</option>
+          <option value="VRF"     {{ 'selected' if st=='VRF' }}>VRF</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="heatType">Heat type</label>
+        <select name="heatType" id="heatType">
+          {% set ht = inputs.get('heatType','') %}
+          <option value="gas furnace" {{ 'selected' if ht=='gas furnace' }}>Gas furnace</option>
+          <option value="heat pump"   {{ 'selected' if ht=='heat pump' }}>Heat pump</option>
+          <option value="heat strip"  {{ 'selected' if ht=='heat strip' }}>Heat strip</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="acMounting">Mounting</label>
+        <select name="acMounting" id="acMounting">
+          {% set m = inputs.get('acMounting','') %}
+          <option value="RTU"      {{ 'selected' if m=='RTU' }}>RTU / roof</option>
+          <option value="slab"     {{ 'selected' if m=='slab' }}>Slab</option>
+          <option value="sidewall" {{ 'selected' if m=='sidewall' }}>Sidewall</option>
+          <option value="other"    {{ 'selected' if m=='other' }}>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="maxSystemCFM">Max single-system CFM</label>
+        <input type="number" name="maxSystemCFM" id="maxSystemCFM"
+               value="{{ inputs.get('maxSystemCFM','') }}" min="0" step="50">
+        <small>Gates the smoke-detection shutdown section (&ge; 2000 CFM).</small>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3 style="margin-top:0;">Project conditions <span class="spec-src spec-src-prop">from CMS &middot; proposal / spec</span></h3>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasOutsideAir" {{ 'checked' if inputs.get('hasOutsideAir') }}> Has outside air</label></div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasExhaust" {{ 'checked' if inputs.get('hasExhaust') }}> Has exhaust</label></div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="ceilingConcealedGWB" {{ 'checked' if inputs.get('ceilingConcealedGWB') }}> Concealed / GWB ceiling (gates access panels)</label></div>
+  </section>
+
+  <section>
+    <h3 style="margin-top:0;">Spec options <span class="spec-src spec-src-user">select for this project</span></h3>
+    <div class="field" style="max-width:280px;">
+      <label for="tbMode">Testing &amp; balancing</label>
+      <select name="tbMode" id="tbMode">
+        {% set tb = inputs.get('tbMode','recommend') %}
+        <option value="recommend" {{ 'selected' if tb=='recommend' }}>Recommend</option>
+        <option value="require"   {{ 'selected' if tb=='require' }}>Require</option>
+        <option value="omit"      {{ 'selected' if tb=='omit' }}>Omit</option>
+      </select>
+    </div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasVavOrFireSmoke" {{ 'checked' if inputs.get('hasVavOrFireSmoke') }}> VAV boxes / fire / smoke dampers (adds relief doors)</label></div>
+    <div class="field-row"><label class="checkbox"><input type="checkbox" name="hasExistingControls" {{ 'checked' if inputs.get('hasExistingControls') }}> Tie into existing control system</label></div>
+
+    <div class="submit-row">
+      <button type="submit" class="primary">Save &amp; generate spec</button>
+    </div>
+  </section>
+</form>
+
+{% if warnings %}
+<div class="warn" style="margin:1rem 0;">
+  <strong>Missing values:</strong>
+  <ul style="margin:.4rem 0 0 1.2rem;">{% for w in warnings|unique %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{# ── Copy-ready spec output ────────────────────────────────────────── #}
+{% if spec.parts %}
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; margin-top:2rem;">
+  <h3 style="margin:0;">Specification</h3>
+  <div style="display:flex; gap:.5rem;">
+    <button type="button" class="btn-secondary" onclick="copySpec()">Copy to clipboard</button>
+    <form method="post" action="{{ url_for('job_spec_download_docx', job_id=job_id) }}" style="margin:0;">
+      <button type="submit" class="btn-primary">Download Word Doc</button>
+    </form>
+  </div>
+</div>
+
+<div class="spec-copy-wrap">
+  <div class="spec-copy" id="specOutput">
+
+    {# Title block #}
+    <p class="spec-title">MECHANICAL SPECIFICATIONS</p>
+    {% if state_info.mech_code %}
+    <p class="spec-subtitle">{{ state_info.mech_code }}&nbsp;&nbsp;&middot;&nbsp;&nbsp;Division 23</p>
+    {% endif %}
+
+    {% for part in spec.parts %}
+      {% for section in part.sections %}
+        <p class="spec-heading">{{ section.num }}&nbsp;&nbsp;{{ section.title }}</p>
+        {% for clause in section.clauses %}
+          <p class="spec-clause-line">
+            <span class="spec-lbl">{{ clause.label }}</span>&nbsp;&nbsp;{{ clause.text }}
+          </p>
+        {% endfor %}
+      {% endfor %}
+    {% endfor %}
+
+  </div>
+</div>
+{% endif %}
+
+<style>
+/* ── Form labels ── */
+.spec-src { font-size:.7rem; font-weight:500; padding:2px 8px; border-radius:4px; margin-left:.5rem; vertical-align:middle; }
+.spec-src-cms  { background:#fbeaf0; color:#993556; }
+.spec-src-prop { background:#e6f1fb; color:#0c447c; }
+.spec-src-user { background:#faeeda; color:#633806; }
+
+/* ── Copy-ready output container ── */
+.spec-copy-wrap {
+  margin-top:.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  padding: 2rem 2.25rem;
+}
+
+/* ── Spec typography — Calibri, black & white ── */
+.spec-copy {
+  font-family: Calibri, 'Calibri Light', Candara, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #000;
+  max-width: 7in;
+}
+
+.spec-title {
+  font-family: Calibri, 'Calibri Light', Candara, sans-serif;
+  font-size: 13pt;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 .15rem;
+  color: #000;
+}
+
+.spec-subtitle {
+  font-family: Calibri, 'Calibri Light', Candara, sans-serif;
+  font-size: 10pt;
+  text-align: center;
+  margin: 0 0 1.4rem;
+  color: #000;
+}
+
+.spec-heading {
+  font-family: Calibri, 'Calibri Light', Candara, sans-serif;
+  font-size: 11pt;
+  font-weight: 700;
+  margin: 1rem 0 .3rem;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #000;
+  color: #000;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.spec-clause-line {
+  font-family: Calibri, 'Calibri Light', Candara, sans-serif;
+  font-size: 11pt;
+  margin: 0 0 .3rem;
+  padding-left: 1.6rem;
+  text-indent: -1.6rem;
+  color: #000;
+}
+
+.spec-lbl {
+  font-weight: 700;
+  font-family: Calibri, 'Calibri Light', Candara, sans-serif;
+}
+</style>
+
+<script>
+function copySpec() {
+  const el = document.getElementById('specOutput');
+  if (!el) return;
+
+  // Try modern clipboard API with plain text fallback
+  const lines = [];
+  el.querySelectorAll('p').forEach(p => {
+    lines.push(p.innerText.trim());
+  });
+  const text = lines.join('\n');
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.querySelector('button[onclick="copySpec()"]');
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy to clipboard', 2000); }
+    }).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  const btn = document.querySelector('button[onclick="copySpec()"]');
+  if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy to clipboard', 2000); }
+}
+</script>
+
+{% endblock %}
