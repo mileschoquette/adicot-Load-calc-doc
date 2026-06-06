@@ -1,24 +1,29 @@
-"""PDF snippet cropper for the Adicot intake pipeline — SECTION-TITLE version.
+"""PDF snippet cropper for the Adicot intake pipeline — BBOX version.
 
 Why this exists / why it works this way
 ---------------------------------------
-A drawing sheet has labeled, boxed sections: "HEATING AND COOLING LOAD SUMMARY",
-"VENTILATION SCHEDULE", "DIFFUSER, GRILLE SCHEDULE", a title block, general
-notes, etc. Each review-page value lives inside one of those titled sections.
+A drawing sheet has the review-page values scattered across it: SF and occupant
+counts in the title block, lighting W/SF in the LIGHTING NOTES, equipment in the
+EQUIPMENT SCHEDULE, etc. We want one cropped JPEG per value showing where it
+lives on the sheet.
 
-The extraction model is GOOD at reading which section a value sits in (reading
-text) and BAD at guessing pixel coordinates (we proved this: boxes drifted run
-to run and landed on the wrong side of wide E-size sheets). So we split the work:
+The earlier SECTION-TITLE approach asked the model to name the titled section a
+value sits under, then searched the page for that title text with PyMuPDF. That
+only works when the model's label happens to be literal searchable text on the
+page. It broke the moment a sheet's title block was graphic (model returned
+"TITLE BLOCK", which is a description, not printed text) — 0 crops, every field
+errored. Too fragile across drafters.
 
-  * The model returns, per field, the SECTION TITLE the value lives under:
-        "_sources": { "sf": { "page": 1, "section": "HEATING AND COOLING LOAD SUMMARY" }, ... }
-  * THIS module searches the page for that title text with PyMuPDF
-    (page.search_for -> real coordinates) and crops a generous region starting
-    at the title and extending down/right to capture the section body.
+This version crops by COORDINATES. The model already sees the rasterized page,
+so it points at where the value sits with a normalized bounding box:
 
-Neither side guesses pixels. The model names a label; PyMuPDF finds where that
-label actually is. Result: a snippet that reliably shows "your value is in this
-block — start here," which is the stated goal.
+  "_sources": { "sf": { "page": 1, "bbox": [0.71, 0.93, 0.10, 0.04] }, ... }
+
+bbox = [x, y, w, h], all fractions of page size, origin TOP-LEFT. No text
+search, no guessing a label that may not exist. THIS module pads the box a touch
+(values sit among dimension lines / leaders) and crops it at DPI.
+
+Neither side searches text. The model points; PyMuPDF crops the pixels.
 
 Pure logic — no Flask, no Drive, no network. app.py's /crop route calls
 crop_sources() / overlay_pages().
@@ -27,8 +32,6 @@ crop_sources() / overlay_pages().
 from __future__ import annotations
 
 import base64
-import difflib
-import re
 from typing import Optional
 
 import fitz  # PyMuPDF
@@ -38,17 +41,16 @@ import fitz  # PyMuPDF
 
 DPI = 150
 JPEG_QUALITY = 60
-MAX_WIDTH_PX = 700              # section crops are wider than field crops
+MAX_WIDTH_PX = 700
 
-# How big a region to crop around a found title, as fractions of PAGE size.
-# The title sits at the top of its section; the body extends below and to the
-# right of the title text. These are generous on purpose.
-REGION_DOWN = 0.22             # extend this far DOWN the page from the title top
-REGION_RIGHT = 0.30            # extend this far RIGHT from the title left edge
-REGION_UP = 0.015              # small lead-in above the title so it's included
-REGION_LEFT = 0.01             # small lead-in left of the title
+# Pad each bbox by this fraction of PAGE size on every side, so the crop has a
+# little breathing room around the value instead of clipping it tight.
+PAD_X = 0.012
+PAD_Y = 0.012
 
-FUZZY_CUTOFF = 0.72            # min ratio for fuzzy title matching when exact fails
+# Round normalized bbox coords to this many decimals when building the dedup key.
+# Two boxes that land within ~1% of each other share one crop.
+DEDUP_DECIMALS = 2
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -57,79 +59,32 @@ def _clamp(v, lo=0.0, hi=1.0):
     return max(lo, min(hi, v))
 
 
-def _norm(s: str) -> str:
-    """Normalize a title for matching: upper, collapse whitespace, strip junk."""
-    s = (s or "").upper()
-    s = s.replace("&", " AND ")
-    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-
-def _page_text_lines(page):
-    """Return [(text, fitz.Rect), ...] for text lines on the page."""
-    out = []
-    d = page.get_text("dict")
-    for block in d.get("blocks", []):
-        for line in block.get("lines", []):
-            spans = line.get("spans", [])
-            if not spans:
-                continue
-            txt = "".join(sp.get("text", "") for sp in spans).strip()
-            if not txt:
-                continue
-            x0 = min(sp["bbox"][0] for sp in spans)
-            y0 = min(sp["bbox"][1] for sp in spans)
-            x1 = max(sp["bbox"][2] for sp in spans)
-            y1 = max(sp["bbox"][3] for sp in spans)
-            out.append((txt, fitz.Rect(x0, y0, x1, y1)))
-    return out
-
-
-def _find_title_rect(page, title: str):
-    """Locate a section title on the page. Try exact search_for first, then a
-    fuzzy line-by-line match (drawings often have odd spacing/case). Returns a
-    fitz.Rect or None."""
-    if not title:
+def _parse_bbox(src: dict):
+    """Pull [x, y, w, h] out of a source object. Accepts a 'bbox' list or
+    explicit x/y/w/h keys. Returns a tuple of 4 floats or None if malformed."""
+    raw = src.get("bbox")
+    if raw is None and all(k in src for k in ("x", "y", "w", "h")):
+        raw = [src["x"], src["y"], src["w"], src["h"]]
+    if raw is None:
         return None
-
-    # 1) direct search (fast, exact)
-    rects = page.search_for(title)
-    if rects:
-        return rects[0]
-
-    # 2) try the "&" form
-    rects = page.search_for(title.replace(" AND ", " & "))
-    if rects:
-        return rects[0]
-
-    # 3) fuzzy: compare normalized title against every text line
-    want = _norm(title)
-    best = None
-    best_ratio = 0.0
-    for txt, rect in _page_text_lines(page):
-        cand = _norm(txt)
-        if not cand:
-            continue
-        if want and (want in cand or cand in want):
-            return rect
-        ratio = difflib.SequenceMatcher(None, want, cand).ratio()
-        if ratio > best_ratio:
-            best_ratio, best = ratio, rect
-    if best is not None and best_ratio >= FUZZY_CUTOFF:
-        return best
-    return None
+    try:
+        x, y, w, h = (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
+    except (TypeError, ValueError, IndexError):
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return (x, y, w, h)
 
 
-def _region_from_title(title_rect: fitz.Rect, page_rect: fitz.Rect) -> fitz.Rect:
-    """Given the title's rectangle, build the section region to crop (page
-    coordinates), extending down and right to capture the section body."""
+def _region_from_bbox(bbox, page_rect: fitz.Rect) -> fitz.Rect:
+    """Convert a normalized [x, y, w, h] (top-left origin) into a padded,
+    clamped fitz.Rect in page coordinates."""
     pw, ph = page_rect.width, page_rect.height
-    x0 = title_rect.x0 - REGION_LEFT * pw
-    y0 = title_rect.y0 - REGION_UP * ph
-    x1 = title_rect.x0 + REGION_RIGHT * pw
-    y1 = title_rect.y0 + REGION_DOWN * ph
-    x1 = max(x1, title_rect.x1 + REGION_LEFT * pw)
+    x, y, w, h = bbox
+    x0 = (x - PAD_X) * pw
+    y0 = (y - PAD_Y) * ph
+    x1 = (x + w + PAD_X) * pw
+    y1 = (y + h + PAD_Y) * ph
     return fitz.Rect(_clamp(x0, 0, pw), _clamp(y0, 0, ph),
                      _clamp(x1, 0, pw), _clamp(y1, 0, ph))
 
@@ -146,17 +101,23 @@ def _crop_region_jpeg(page, region: fitz.Rect) -> bytes:
     return pix.tobytes(output="jpeg", jpg_quality=JPEG_QUALITY)
 
 
+def _dedup_key(page_idx, bbox):
+    return (page_idx,
+            round(bbox[0], DEDUP_DECIMALS), round(bbox[1], DEDUP_DECIMALS),
+            round(bbox[2], DEDUP_DECIMALS), round(bbox[3], DEDUP_DECIMALS))
+
+
 # ── Public entry points ──────────────────────────────────────────────────────
 
 def crop_sources(pdf_bytes: bytes, sources: dict,
                  only_fields: Optional[list] = None) -> dict:
-    """Crop one section JPEG per field.
+    """Crop one JPEG per field, located by normalized bbox.
 
-    sources : { field: { "page": n, "section": "TITLE TEXT" } }
+    sources : { field: { "page": n, "bbox": [x, y, w, h] } }   (coords 0..1)
     only_fields : optional whitelist of fields to crop.
 
-    Fields pointing at the same (page, section) share one crop. Returns:
-      { ok, crops:{field:{b64,page,section}}, shared:{field:field},
+    Fields pointing at the same (page, rounded bbox) share one crop. Returns:
+      { ok, crops:{field:{b64,page,bbox}}, shared:{field:field},
         errors:[{field,message}], page_count }
     """
     out = {"ok": False, "crops": {}, "shared": {}, "errors": [], "page_count": 0}
@@ -172,7 +133,7 @@ def crop_sources(pdf_bytes: bytes, sources: dict,
         return out
     out["page_count"] = doc.page_count
 
-    by_section = {}
+    by_box = {}
     page_cache = {}
 
     for field, src in sources.items():
@@ -181,10 +142,13 @@ def crop_sources(pdf_bytes: bytes, sources: dict,
         if not isinstance(src, dict):
             out["errors"].append({"field": field, "message": "source not an object"})
             continue
-        title = src.get("section") or src.get("title") or ""
-        if not title:
-            out["errors"].append({"field": field, "message": "no section title"})
+
+        bbox = _parse_bbox(src)
+        if bbox is None:
+            out["errors"].append({"field": field,
+                                  "message": "missing or malformed bbox"})
             continue
+
         try:
             page_1 = int(src.get("page", 1))
         except (TypeError, ValueError):
@@ -195,9 +159,9 @@ def crop_sources(pdf_bytes: bytes, sources: dict,
                                   "message": f"page {page_1} out of range"})
             continue
 
-        key = (page_idx, _norm(title))
-        if key in by_section:
-            out["shared"][field] = by_section[key]
+        key = _dedup_key(page_idx, bbox)
+        if key in by_box:
+            out["shared"][field] = by_box[key]
             continue
 
         page = page_cache.get(page_idx)
@@ -205,13 +169,12 @@ def crop_sources(pdf_bytes: bytes, sources: dict,
             page = doc.load_page(page_idx)
             page_cache[page_idx] = page
 
-        title_rect = _find_title_rect(page, title)
-        if title_rect is None:
+        region = _region_from_bbox(bbox, page.rect)
+        if region.is_empty or region.width < 1 or region.height < 1:
             out["errors"].append({"field": field,
-                                  "message": f"section not found: {title!r}"})
+                                  "message": f"empty region from bbox {bbox}"})
             continue
 
-        region = _region_from_title(title_rect, page.rect)
         try:
             jpeg = _crop_region_jpeg(page, region)
         except Exception as e:
@@ -224,9 +187,9 @@ def crop_sources(pdf_bytes: bytes, sources: dict,
         out["crops"][field] = {
             "b64": base64.b64encode(jpeg).decode("ascii"),
             "page": page_1,
-            "section": title,
+            "bbox": list(bbox),
         }
-        by_section[key] = field
+        by_box[key] = field
 
     doc.close()
     out["ok"] = bool(out["crops"])
@@ -235,9 +198,9 @@ def crop_sources(pdf_bytes: bytes, sources: dict,
 
 def overlay_pages(pdf_bytes: bytes, sources: dict,
                   only_fields: Optional[list] = None) -> dict:
-    """Debug: draw each found section region as a red rectangle on the full page
-    (labeled with field names), so targeting can be eyeballed on the real
-    drawing. Sections that can't be located are listed in errors."""
+    """Debug: draw each bbox as a red rectangle on the full page (labeled with
+    field names), so targeting can be eyeballed on the real drawing. Boxes that
+    are malformed or off-page are listed in errors."""
     out = {"ok": False, "pages": {}, "errors": []}
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -254,8 +217,9 @@ def overlay_pages(pdf_bytes: bytes, sources: dict,
             continue
         if not isinstance(src, dict):
             continue
-        title = src.get("section") or src.get("title") or ""
-        if not title:
+        bbox = _parse_bbox(src)
+        if bbox is None:
+            out["errors"].append({"field": field, "message": "missing or malformed bbox"})
             continue
         try:
             page_1 = int(src.get("page", 1))
@@ -263,19 +227,16 @@ def overlay_pages(pdf_bytes: bytes, sources: dict,
             page_1 = 1
         idx = page_1 - 1
         if idx < 0 or idx >= doc.page_count:
+            out["errors"].append({"field": field, "message": f"page {page_1} out of range"})
             continue
         page = doc.load_page(idx)
-        key = (idx, _norm(title))
+        key = _dedup_key(idx, bbox)
         if key in seen:
             lst = regions_by_page[idx]
             i = seen[key]
             lst[i] = (lst[i][0] + ", " + field, lst[i][1])
             continue
-        title_rect = _find_title_rect(page, title)
-        if title_rect is None:
-            out["errors"].append({"field": field, "message": f"section not found: {title!r}"})
-            continue
-        region = _region_from_title(title_rect, page.rect)
+        region = _region_from_bbox(bbox, page.rect)
         regions_by_page.setdefault(idx, [])
         seen[key] = len(regions_by_page[idx])
         regions_by_page[idx].append((field, region))
