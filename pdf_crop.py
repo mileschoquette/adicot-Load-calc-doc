@@ -39,9 +39,9 @@ import fitz  # PyMuPDF
 
 # ── Tunables ─────────────────────────────────────────────────────────────────
 
-DPI = 150
-JPEG_QUALITY = 60
-MAX_WIDTH_PX = 700
+DPI = 300
+JPEG_QUALITY = 85
+MAX_WIDTH_PX = 1400
 
 # Pad each bbox by this fraction of PAGE size on every side, so the crop has a
 # little breathing room around the value instead of clipping it tight.
