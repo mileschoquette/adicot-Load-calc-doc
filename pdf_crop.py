@@ -45,8 +45,8 @@ MAX_WIDTH_PX = 1400
 
 # Pad each bbox by this fraction of PAGE size on every side, so the crop has a
 # little breathing room around the value instead of clipping it tight.
-PAD_X = 0.03
-PAD_Y = 0.018
+PAD_X = 0.04
+PAD_Y = 0.035
 
 # Round normalized bbox coords to this many decimals when building the dedup key.
 # Two boxes that land within ~1% of each other share one crop.
