@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Adicot Engineering — Project Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --orange:#E8740A;--orange-lt:#FDF0E4;--orange-mid:#F4C48A;
+  --cream:#F7F3EE;--cream-dark:#EDE8E1;--dark:#1A1A1A;--mid:#5C5C5C;
+  --light:#9A9A9A;--border:#DDD8D0;--white:#FFFFFF;
+  --green:#2D6A2D;--green-lt:#E6F2E6;--blue:#1D4ED8;--blue-lt:#EFF6FF;
+  --sans:'IBM Plex Sans',sans-serif;--serif:'IBM Plex Serif',serif;
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 2px 12px rgba(0,0,0,0.08);--shadow-lg:0 8px 32px rgba(0,0,0,0.12);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;overflow:hidden}
+body{font-family:var(--sans);background:var(--cream);color:var(--dark);font-size:14px;line-height:1.6;padding:0 0 80px}
+.page-wrap{max-width:1080px;margin:0 auto;padding:40px 24px}
+.portal-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:2px solid var(--border)}
+.project-name{font-family:var(--serif);font-size:28px;font-weight:600;color:var(--dark);line-height:1.2;margin-bottom:4px}
+.project-address{font-size:13px;color:var(--mid);margin-bottom:10px}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-mid)}
+.status-badge.signed{background:var(--green-lt);color:var(--green);border-color:#A3D9A3}
+.header-right{text-align:right;flex-shrink:0;margin-left:20px}
+.firm-name{font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px}
+.firm-sub{font-size:11px;color:var(--light)}
+.firm-pe{font-size:11px;color:var(--orange);font-weight:600;margin-top:2px}
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--cream-dark)}
+.card-title{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--orange)}
+.card-tag{font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--cream);color:var(--mid);border:1px solid var(--border)}
+.proposal-scope{display:none}
+.proposal-meta{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.meta-item{display:flex;align-items:baseline;gap:12px;background:var(--cream);border-radius:var(--radius-sm);padding:7px 14px}
+.meta-label{font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--light);flex-shrink:0;width:108px}
+.meta-value{font-size:13px;font-weight:600;color:var(--dark);flex:1;min-width:0}
+.fee-display{font-family:var(--serif);font-size:36px;font-weight:600;color:var(--dark);margin-bottom:4px}
+.fee-note{font-size:12px;color:var(--mid);margin-bottom:14px}
+.fee-breakdown{border-top:1px solid var(--cream-dark);padding-top:12px}
+.fee-line{display:flex;justify-content:space-between;font-size:12px;color:var(--mid);padding:3px 0}
+.fee-line span:last-child{font-weight:600;color:var(--dark)}
+.deliverables-list{list-style:none}
+.deliverables-list li{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;color:var(--dark);border-bottom:1px solid var(--cream-dark)}
+.deliverables-list li:last-child{border-bottom:none}
+.deliverables-list li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--orange);flex-shrink:0;margin-top:6px}
+.duration-note{font-size:12px;line-height:1.6;background:var(--blue-lt);border-radius:var(--radius-sm);padding:10px 14px;border-left:3px solid var(--blue);color:var(--blue)}
+.section-divider{display:flex;align-items:center;gap:12px;margin:16px 0 16px}
+.divider-line{flex:1;height:1px;background:var(--border)}
+.divider-label{font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--light);white-space:nowrap}
+.wo-intro{font-size:13px;color:var(--mid);line-height:1.6;margin-bottom:20px;padding:12px 16px;background:var(--orange-lt);border-radius:var(--radius-sm);border-left:3px solid var(--orange)}
+.wo-section-title{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--orange);padding:8px 0 6px;margin-bottom:0}
+.field-row{margin-bottom:14px}
+.field-label{display:block;font-size:11px;font-weight:600;color:var(--mid);letter-spacing:0.3px;margin-bottom:6px}
+.field-label .prefilled-badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:var(--green);background:var(--green-lt);padding:1px 7px;border-radius:20px;margin-left:6px;letter-spacing:0.3px;text-transform:uppercase}
+.field-input{width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:9px 13px;font-family:var(--sans);font-size:13px;color:var(--dark);background:#FAFAF8;outline:none;transition:border-color 0.15s,background 0.15s}
+.field-input:focus{border-color:var(--orange);background:var(--white)}
+.field-input.prefilled{border-color:#B8D4B8;background:#F4FAF4;color:var(--green)}
+.field-input::placeholder{color:#C0BDB8}
+select.field-input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239A9A9A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer}
+textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.hint{font-size:11px;color:var(--light);margin-top:4px;line-height:1.5}
+.info-box{background:var(--blue-lt);border-radius:var(--radius-sm);padding:10px 13px;font-size:11px;color:var(--blue);margin-bottom:12px;line-height:1.5}
+.info-box.orange{background:var(--orange-lt);color:#8B4500;border-left:3px solid var(--orange)}
+.cond-block{border-left:3px solid var(--orange);padding-left:16px;margin:10px 0 14px;animation:fadeSlide 0.2s ease}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.cb-group{display:flex;flex-direction:column;gap:8px}
+.cb-item{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border:1.5px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.15s;background:white;user-select:none}
+.cb-item:hover{border-color:var(--orange-mid);background:var(--orange-lt)}
+.cb-item.checked{border-color:var(--orange);background:var(--orange-lt)}
+.cb-box{width:18px;height:18px;border:2px solid var(--border);border-radius:5px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;transition:all 0.15s;background:white}
+.cb-item.checked .cb-box{background:var(--orange);border-color:var(--orange);color:white}
+.cb-text{font-size:13px;font-weight:600;color:var(--dark)}
+.cb-sub{font-size:11px;color:var(--mid);margin-top:2px}
+.dynamic-label{font-size:11px;font-weight:600;color:var(--orange);background:var(--orange-lt);padding:3px 10px;border-radius:20px;display:inline-block;margin-top:4px}.cb-fee{font-size:12px;font-weight:700;color:var(--orange);white-space:nowrap;align-self:center;margin-left:12px;min-width:52px;text-align:right;opacity:0.85}
+.terms-block{background:var(--cream);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-height:140px;overflow-y:auto;font-size:11px;color:var(--mid);line-height:1.7;margin-bottom:16px}
+.terms-block::-webkit-scrollbar{width:4px}
+.terms-block::-webkit-scrollbar-track{background:transparent}
+.terms-block::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.terms-check-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--cream-dark);cursor:pointer;margin-bottom:4px;user-select:none}
+.terms-check-row:last-of-type{border-bottom:none}
+.terms-check-box{width:20px;height:20px;border:2px solid var(--border);border-radius:6px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;transition:all 0.15s;background:white}
+.terms-check-box.checked{background:var(--orange);border-color:var(--orange);color:white}
+.terms-check-label{font-size:12px;color:var(--dark);line-height:1.5}
+.sign-section{background:var(--dark);border-radius:var(--radius);padding:24px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:24px}
+.sign-text{color:#9CA3AF;font-size:13px;line-height:1.5}
+.sign-text strong{color:white;display:block;font-size:14px;margin-bottom:3px}
+.btn-sign{background:var(--orange);color:white;border:none;border-radius:var(--radius-sm);padding:14px 32px;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;flex-shrink:0;letter-spacing:0.2px}
+.btn-sign:hover:not(:disabled){background:#C4630A;transform:translateY(-1px);box-shadow:0 4px 16px rgba(232,116,10,0.35)}
+.btn-sign:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.btn-print{background:transparent;color:#6B7280;border:none;font-family:var(--sans);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;margin-top:10px;display:block;text-align:center;width:100%}
+.success-state{display:none;text-align:center;padding:48px 0;animation:fadeSlide 0.4s ease}
+.success-icon{width:72px;height:72px;background:var(--green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px}
+.success-title{font-family:var(--serif);font-size:28px;color:var(--dark);margin-bottom:8px}
+.success-sub{font-size:14px;color:var(--mid);line-height:1.6;margin-bottom:24px}
+.next-steps{text-align:left;background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:20px;max-width:460px;margin:0 auto}
+.next-step{display:flex;gap:12px;padding:8px 0;font-size:13px;color:var(--dark);line-height:1.5;border-bottom:1px solid var(--cream-dark)}
+.next-step:last-child{border-bottom:none}
+.step-num{width:22px;height:22px;background:var(--orange);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
+.two-panel{display:grid;grid-template-columns:360px 1fr;gap:28px;align-items:start}.panel-left{min-width:0}.panel-right{min-width:0}@media(max-width:800px){.two-panel{grid-template-columns:1fr}}@media(max-width:560px){.page-wrap{padding:24px 16px}.portal-header{flex-direction:column;gap:12px}.header-right{text-align:left;margin-left:0}.proposal-meta{grid-template-columns:1fr}.two-col,.three-col{grid-template-columns:1fr}.sign-section{flex-direction:column}.btn-sign{width:100%}}
+@media print{body{background:white}.btn-sign,.btn-print,.sign-section{display:none}.terms-block{max-height:none!important;overflow:visible!important;border:none!important}.panel-right{page-break-before:always}textarea.field-input{max-height:none!important;overflow:visible!important;height:auto!important}}
+
+/* ── Admin / Client mode ───────────────────────────────────────────── */
+.admin-only{display:none}
+body.mode-admin .admin-only{display:block}
+body.mode-admin .client-only{display:none}
+body.mode-admin [contenteditable="true"]{outline:1px dashed var(--orange-mid);outline-offset:2px;background:#FFFBF5;border-radius:4px;padding:1px 4px;cursor:text}
+body.mode-admin [contenteditable="true"]:focus{outline:2px solid var(--orange);background:var(--white)}
+
+/* ── Snippet display ───────────────────────────────────────────────── */
+.snip-toggle{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:var(--orange);background:var(--orange-lt);border:1px solid var(--orange-mid);border-radius:20px;padding:1px 8px;cursor:pointer;letter-spacing:0.3px;text-transform:uppercase;user-select:none}
+.snip-toggle:hover{background:var(--orange);color:white}
+.snip-box{display:none;margin-top:6px;padding:6px;background:var(--cream);border:1px solid var(--border);border-radius:var(--radius-sm);width:360px;max-width:none;position:relative;z-index:1}
+.snip-box.open{display:block}
+.snip-box img{display:block;width:100%;height:auto;border-radius:4px}
+.snip-cap{font-size:10px;color:var(--light);margin-top:4px}
+
+/* ── Admin action bar ──────────────────────────────────────────────── */
+.admin-actions{background:var(--dark);border-radius:var(--radius);padding:20px;display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;margin-top:24px}
+.btn-admin{background:var(--orange);color:white;border:none;border-radius:var(--radius-sm);padding:12px 22px;font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;letter-spacing:0.2px}
+.btn-admin.secondary{background:transparent;border:1.5px solid #9CA3AF;color:#E5E7EB}
+.btn-admin:hover:not(:disabled){background:#C4630A}
+.btn-admin.secondary:hover:not(:disabled){background:#374151;border-color:#E5E7EB;color:white}
+.btn-admin:disabled{opacity:0.5;cursor:not-allowed}
+.admin-status{font-size:12px;color:#9CA3AF;margin-right:auto;align-self:center}
+</style>
+</head>
+<body>
+
+<div class="page-wrap">
+  <div class="portal-header">
+    <div class="header-left">
+      <div class="project-name" id="projectName" data-admin-edit>New Project</div>
+      <div class="status-badge" id="statusBadge">Pending Review</div>
+    </div>
+    <div class="header-right">
+      <div class="firm-name">Adicot, Inc.</div>
+      <div class="firm-sub">HVAC / Mechanical Engineering</div>
+      <div class="firm-pe">Adrienne Gould-Choquette, PE #77100</div>
+    </div>
+  </div>
+
+  <div id="main-content">
+  <div class="two-panel">
+  <div class="panel-left">
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Proposal</div><div class="divider-line"></div></div>
+    <div class="wo-intro" style="margin-bottom:20px">Please review your proposal and contract terms, then sign when ready.<button onclick="document.getElementById('sign-anchor').scrollIntoView({behavior:'smooth',block:'start'})" style="display:block;margin-top:10px;background:var(--orange);color:white;border:none;border-radius:6px;padding:8px 18px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.2px">Jump to Signature &#8595;</button></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Proposal</div><div class="card-tag" id="proposalVersion">Version 1.0</div></div>
+      <div class="proposal-scope" id="proposalScope">Load Calculation</div>
+      <div class="proposal-meta">
+        <div class="meta-item"><div class="meta-label">Prepared For</div><div class="meta-value" id="proposalClient" data-admin-edit>&#8212;</div></div>
+        <div class="meta-item"><div class="meta-label">Property Owner</div><div class="meta-value" id="proposalOwner" data-admin-edit>&#8212;</div></div>
+        <div class="meta-item"><div class="meta-label">Project Address</div><div class="meta-value" id="projectAddress" data-admin-edit>&#8212;</div></div>
+        <div class="meta-item"><div class="meta-label">Contact</div><div class="meta-value" id="proposalContact" data-admin-edit style="font-size:12px">&#8212;</div></div>
+        <div class="meta-item"><div class="meta-label">Service</div><div class="meta-value" id="proposalService" data-admin-edit>&#8212;</div></div>
+        <div class="meta-item"><div class="meta-label">Approx. Area</div><div class="meta-value" id="proposalArea" data-admin-edit>&#8212;</div></div>
+        <div class="meta-item"><div class="meta-label">Quote Date</div><div class="meta-value" id="proposalDate">&#8212;</div><div style="font-size:10px;color:var(--light);margin-top:2px">Valid for 30 days</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Fee</div></div>
+      <div class="fee-display" id="feeAmount" data-admin-edit>$&#8212;</div>
+      <div class="fee-note">Due upon Adicot submitting client-approved documents</div>
+      <div class="fee-breakdown">
+        <div class="fee-line"><span>Due at award</span><span id="feeDueAward" data-admin-edit>$0</span></div>
+        <div class="fee-line"><span>Due at delivery</span><span id="feeDelivery" data-admin-edit>&#8212;</span></div>
+        <div class="fee-line"><span>Additional changes</span><span>$225/hr</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Deliverables</div></div>
+      <ul class="deliverables-list" id="deliverablesList" data-admin-edit>
+        <li>Load Calculations (ASHRAE CLTD method)</li>
+        <li>Outside Air Calculation</li>
+        <li>Air Balance Report</li>
+        <li>Zone Map</li>
+        <li>One design review included</li>
+        <li>All documents emailed as digitally signed PDF</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Engagement Duration</div></div>
+      <div style="background:#FFF8E8;border:1.5px solid #F4C48A;border-radius:8px;padding:14px 16px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;color:#2C2C2A;margin-bottom:12px">
+        ENGAGEMENT DURATION IS APPROXIMATELY
+        <span id="inputEngagementDays" data-admin-edit style="font-weight:700;color:#E8740A;margin:0 4px;border-bottom:2px solid #E8740A;padding:0 2px;display:inline-block;min-width:24px;text-align:center">15</span>
+        BUSINESS DAYS BEGINNING WHEN PROJECT SPECIFICATIONS ARE COMPLETE, BACKGROUNDS HAVE BEEN PROVIDED, &amp; CONTRACT HAS BEEN SIGNED.
+      </div>
+      <div id="engagementTBDNote" style="display:none;font-size:12px;color:#E8740A;font-weight:600;background:#FDF0E4;border-radius:6px;padding:8px 12px;margin-bottom:8px">Engagement timeline will be confirmed by Adicot, Inc. &#8212; large projects require a custom schedule.</div>
+      <div style="font-size:12px;color:#5C5C5C;line-height:1.7;font-style:italic">
+        Adicot, Inc. shall not be responsible for delays caused by factors beyond the Design Professional&apos;s reasonable control, including but not limited to delays because of strikes, lockouts, work slowdowns or stoppages, government ordered industry shutdowns, power or server outages, acts of nature, widespread infectious disease outbreaks (including, but not limited to epidemics and pandemics), failure of any governmental or other regulatory authority to act in a timely manner, failure of the Client to furnish timely information or approve or disapprove of the Design Professional&apos;s services or work product, or delays caused by faulty performance by the Client&apos;s or by contractors of any level. When such delays beyond the Design Professional&apos;s reasonable control occur, the Client agrees that the Design Professional shall not be responsible for damages, nor shall the Design Professional be deemed in default of this Agreement.
+      </div>
+    </div>
+
+    <div class="client-only">
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Sign &amp; Submit</div><div class="divider-line"></div></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Contract Terms</div></div>
+
+      <div class="terms-block" style="max-height:220px">
+        <p style="margin-bottom:10px"><strong>1.</strong> The terms and conditions of the agreement apply in full to the services provided under this Proposal. In proceeding with this agreement, Client, acting with proper authority, has agreed to and executed this Proposal and it now becomes the binding Contract.</p>
+        <p style="margin-bottom:10px"><strong>2.</strong> Changes to the project will be communicated and agreed upon, and documented in writing via email. Changes resulting in additional time spent on the project will be billed at an hourly rate of $225/hour.</p>
+        <p style="margin-bottom:10px"><strong>3.</strong> Beginning on the first day an invoice is past due Client will incur an administrative fee of 1.5% of the contract value. Every additional 30 days the invoice remains unpaid, Client will incur an additional administrative fee of 1.5% of the total contract value until the invoice has been paid in full.</p>
+      </div>
+
+      <div id="statuteBlock" style="background:#1A1A1A;border-radius:8px;padding:18px 20px;margin:12px 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#fff;line-height:1.7;text-align:justify">
+        4. PURSUANT TO FLORIDA STATUTE &sect; 558.035, AN INDIVIDUAL EMPLOYEE OR AGENT OF ADICOT, INC. MAY NOT BE HELD INDIVIDUALLY LIABLE FOR DAMAGES RESULTING FROM NEGLIGENCE OCCURRING WITHIN THE COURSE AND SCOPE OF PROFESSIONAL SERVICES RENDERED UNDER THIS PROFESSIONAL SERVICES CONTRACT.
+      </div>
+
+      <div style="font-size:11px;color:#5C5C5C;margin:8px 0 12px">Additionally, Client shall maintain professional liability insurance required under the contract; and any damages are solely economic in nature and the damages do not extend to personal injuries or property not subject to the contract.</div>
+
+      <div class="terms-block" style="max-height:240px;font-size:11px">
+        <strong>GENERAL CONDITIONS</strong><br/><br/>
+        <strong>1. CONTRACT</strong> &#8212; These Contract Provisions and the accompanying Proposal constitute the full and complete Agreement between the parties and may be changed, amended, added to, superseded, or waived only if both parties specifically agree in writing to such amendment of the Agreement. In the event of any inconsistency between these Contract Provisions and any proposal, contract, purchase order, requisition, notice to proceed, or like document, these Contract Provisions shall govern.<br/><br/>
+        <strong>2. RIGHT OF ENTRY</strong> &#8212; When entry to the property is required for ADICOT, INC to perform its services, Client agrees to obtain legal right-of-entry on the property. ADICOT, INC&apos;s obligation is to endeavor to guard Client against defects and deficiencies. Site visits are for observation and not inspection. Review of submittals is for the limited purpose of checking for conformance with information given and design concept and not for determining the accuracy of details (dimensions, quantities, installation, or performance). ADICOT, INC is not responsible for means, methods, sequencing, techniques, etc. ADICOT, INC. is not responsible for safety programs. Design Professional cannot stop work but can reject or recommend rejection of work.<br/><br/>
+        <strong>3. DOCUMENTS</strong> &#8212; All reports, notes, drawings, specifications, data, calculations, and other documents, including those in electronic form, prepared by ADICOT, INC are instruments of ADICOT, INC&apos;s service that shall remain ADICOT, INC&apos;s property. Client agrees not to use ADICOT, INC generated documents for marketing purposes, for projects other than the project for which the documents were prepared by ADICOT, INC, or for future modifications to this project, without ADICOT, INC&apos;s express written permission. Any reuse or distribution to third parties without such express written permission or project-specific adaptation by ADICOT, INC will be at Client&apos;s sole risk and without liability to ADICOT, INC or its employees, subsidiaries, independent professional associates, sub-consultants, and subcontractors. Client shall, to the fullest extent permitted by law, defend, indemnify, and hold harmless ADICOT, INC from and against any and all costs, expenses, fees, losses, claims, demands, liabilities, suits, actions, and damages whatsoever arising out of or resulting from such unauthorized reuse or distribution. ADICOT, INC disclaims any warranties. ADICOT, INC is only responsible for the accuracy of information that it, or its consultants, provides and/or inputs into the model. ADICOT, INC has no control over and is not responsible for the accuracy or completeness of information inputted by other parties.<br/><br/>
+        <strong>4. DISPOSAL OF SAMPLES</strong> &#8212; ADICOT, INC will discard samples upon completion of the work covered under this Agreement, unless Client instructs otherwise in writing.<br/><br/>
+        <strong>5. HAZARDOUS MATERIALS</strong> &#8212; The scope of ADICOT, INC&apos;s services for this Agreement does not include any responsibility for detection, remediation, accidental release, or services relating to waste, oil, asbestos, lead, or other hazardous materials, as defined by Federal, State, and local laws or regulations.<br/><br/>
+        <strong>6. CONSTRUCTION PHASE SERVICES</strong> &#8212; If ADICOT, INC performs any services during the construction phase of the project, ADICOT, INC shall not supervise, direct, or have control over Contractor&apos;s work. ADICOT, INC shall not have authority over or responsibility for the construction means, methods, techniques, sequences or procedures or for safety precautions and programs in connection with the work of the Contractor. ADICOT, INC does not guarantee the performance of the construction contract by the Contractor and does not assume responsibility for the Contractor&apos;s failure to furnish and perform its work in accordance with the Contract Documents.<br/><br/>
+        <strong>7. STANDARD OF CARE</strong> &#8212; ADICOT, INC and its employees, subsidiaries, independent professional associates, sub-consultants, and subcontractors will exercise that degree of care and skill ordinarily practiced under similar circumstances by design professionals providing similar services. Client agrees that services provided will be rendered without any warranty, express or implied. ADICOT, INC shall exercise usual and customary professional care in its efforts to comply with applicable codes, regulations, laws rules, ordinances, and such other requirements in effect as of the date of execution of this Agreement.<br/><br/>
+        <strong>8. OPINION OF PROBABLE COSTS</strong> &#8212; When required as part of its work, ADICOT, INC will furnish opinions of probable cost, but does not guarantee the accuracy of such estimates. Opinions of probable cost, financial evaluations, feasibility studies, economic analyses of alternate solutions, and utilitarian considerations of operations and maintenance costs prepared by ADICOT, INC hereunder will be made on the basis of ADICOT, INC&apos;s experience and qualifications and will represent ADICOT, INC&apos;s judgment as an experienced and qualified design professional. However, users of the probable cost opinions must recognize that ADICOT, INC does not have control over the cost of labor, material, equipment, or services furnished by others or over market conditions or contractors&apos; methods of determining prices or performing the work.<br/><br/>
+        <strong>9. SUSPENSION OF WORK</strong> &#8212; Client may, at any time, by written notice, suspend further work by ADICOT, INC. Client shall remain liable for, and shall promptly pay ADICOT, INC for all services rendered to the date of suspension of services, plus suspension charges, which shall include the cost of assembling documents, personnel and equipment, rescheduling or reassignment, and commitments made to others on Client&apos;s behalf. Client shall pay ADICOT, INC pursuant to the rates and charges set forth in the Proposal. ADICOT, INC will submit monthly invoices to Client for services rendered and expenses incurred. If Client does not pay invoices within thirty (30) days of submission of the invoice, ADICOT, INC may, upon written notice to Client, suspend further work until payments are brought current. Client agrees to indemnify and hold ADICOT, INC harmless from any claim or liability resulting from such suspension.<br/><br/>
+        <strong>10. CHANGES OR DELAYS</strong> &#8212; Unless the accompanying Proposal provides otherwise, the proposed fees constitute ADICOT, INC&apos;s estimate to perform the services required to complete the Project. Required services often are not fully definable in the initial planning; accordingly, developments may dictate a change in the scope of services to be performed. Where this occurs, changes in the Agreement shall be negotiated and an equitable adjustment shall be made. Costs and schedule commitments shall be subject to renegotiation for unreasonable delays caused by Client&apos;s failure to provide specified facilities, direction, or information, or if ADICOT, INC&apos;s failure to perform is due to any act of God, labor trouble, fire, inclement weather, act of governmental authority, failure of transportation, accident, power failure, or interruption or any other cause beyond the reasonable control of ADICOT, INC. Temporary work stoppage caused by any of the above may result in additional cost beyond that outlined in the accompanying Proposal.<br/><br/>
+        <strong>11. LIABILITY</strong> &#8212; To the fullest extent permitted by law, the total liability, in the aggregate, of ADICOT, INC and ADICOT, INC&apos;s officers, directors, employees, agents, and consultants to Client and anyone claiming by, through or under Client, for any and all injuries, claims, losses, expenses, or damages whatsoever arising out of or in any way related to ADICOT, INC&apos;s services, the Project or this Agreement, from any cause or causes whatsoever, including but not limited to, negligence, strict liability, breach of contract or breach of warranty shall not exceed the total compensation received by ADICOT, INC under this Agreement, or the total amount of $5,000, whichever is greater.<br/><br/>
+        <strong>12. CONFLICTS OF INTEREST</strong> &#8212; This assignment may involve parties with adverse interests to clients with whom ADICOT, INC has current or past relationships. It is ADICOT, INC policy to make reasonable attempts to identify such relationships prior to acceptance of a professional assignment, but ADICOT, INC cannot assure that conflicts or perceived conflicts will not arise, and ADICOT, INC does not accept responsibility for such occurrences.<br/><br/>
+        <strong>13. CONFIDENTIALITY</strong> &#8212; If Client assigns the Agreement, ADICOT, INC. does not have to execute any documents that might increase ADICOT, INC.&apos;s contractual or legal obligations or the availability or cost of its professional or general liability insurance. ADICOT, INC.&apos;s obligation to maintain confidential information is not absolute. Confidentiality exception if the information is in public domain; if disclosures are in compliance with legal orders; and if disclosure is reasonably necessary for ADICOT, INC. to defend itself in a claim.<br/><br/>
+        <strong>14. REIMBURSABLE EXPENSES</strong> &#8212; ADICOT, INC will bill direct nonpayroll expenses at cost plus 10%. Direct expenses include all reasonable expenses resulting from required responses to subpoenas or court orders related to work under the Contract.<br/><br/>
+        <strong>15. CONDOMINIUMS</strong> &#8212; Contractual Limitation of Liability: To the fullest extent permitted by law, the total liability of Adicot, Inc. and Adicot, Inc.&apos;s officers, directors, employees, agents, and independent professional associates and design professionals to Owner and any one claiming by, through or under Owner, for any and all injuries, claims, losses, expenses, or damages arising out of or in any way related to Adicot, Inc.&apos;s services, the project or this Agreement, from any cause or causes whatsoever, including but not limited to, the negligence, errors, omissions, strict liability, breach of contract, breach of warranty of Adicot, Inc. or Adicot, Inc.&apos;s officers, directors, employees, agents or independent professional associates or design professionals, or any of them, shall not exceed $50,000.<br/><br/>
+        <em>Contractual &#8212; Indemnity:</em> The Owner acknowledges the risks to Adicot, Inc. inherent in condominium projects and the disparity between Adicot, Inc.&apos;s fee and Adicot, Inc.&apos;s potential liability for problems or alleged problems with such condominium projects. Therefore, the Owner agrees, to the fullest extent permitted by law, to indemnify and hold harmless Adicot, Inc., its officers, directors, employees, consultants, and sub-consultants (collectively Design Professional) against all damages, liabilities or costs, including reasonable attorneys&apos; fees and defense costs, arising out of or in any way connected with the services performed under this Agreement except for damages, liabilities or costs arising from Adicot, Inc.&apos;s sole negligence or willful misconduct.<br/><br/>
+        <em>Contractual &#8212; Maintenance:</em> The Owner agrees that the bylaws of the Condominium Association established for the Project will require that the Association perform, as recommended in the Maintenance Manual, all necessary routine maintenance, maintenance inspections and any other necessary repairs and maintenance called for as a result of these maintenance inspections. The bylaws shall also contain an appropriate waiver and indemnity in favor of the Owner, the Design Professional and its consultants and sub-consultants and the Contractor if the maintenance recommendations contained in the Maintenance Manual are not performed. Maintenance manuals may not be all-inclusive.<br/><br/>
+        <strong>16. MISCELLANEOUS</strong><br/>
+        <em>Governing Law:</em> The laws of the state in which ADICOT, INC office executing this Agreement is located shall govern the validity and interpretation of this Agreement.<br/><br/>
+        <em>Invalid Terms:</em> In the event any of these Contract Provisions are found to be illegal or otherwise unenforceable, the unenforceable Contract Provision will be stricken. Striking such a Contract Provision shall have no effect on the enforceability of the remaining Contract Provisions and those remaining Contract Provisions shall continue in full force and effect as if the unenforceable Contract Provision were never included in the Agreement.<br/><br/>
+        <em>Mediation:</em> Client and ADICOT, INC agree to submit all claims and disputes arising out of this Agreement to non-binding mediation prior to the initiation of legal proceedings. This provision shall survive completion or termination of this Agreement; however, neither party shall seek mediation of any claim or dispute arising out of this Agreement beyond the period of time that would bar the initiation of legal proceedings to litigate such claim or dispute under the applicable law.<br/><br/>
+        <em>ADICOT, INC Reliance:</em> ADICOT, INC shall be entitled to rely, without liability, on the accuracy and completeness of any and all information provided by Client, Client&apos;s consultants and contractors, and information from public records, without the need for independent verification.<br/><br/>
+        <em>Certifications:</em> ADICOT, INC shall not be required to sign any documents, no matter by whom requested, that would result in ADICOT, INC&apos;s having to certify, guaranty, or warrant the existence of conditions that ADICOT, INC cannot ascertain.<br/><br/>
+        <em>Third Parties:</em> Nothing contained in this Agreement shall create a contractual relationship with, or a cause of action in favor of, a third party against either Client or ADICOT, INC. ADICOT, INC&apos;s services hereunder are being performed solely for the benefit of Client, and no other entity shall have any claim against ADICOT, INC because of this Agreement or ADICOT, INC&apos;s performance of services hereunder.<br/><br/>
+        <em>Consequential Damages:</em> Neither Client nor ADICOT, INC shall be liable to the other or shall make any claim for any incidental, indirect or consequential damages arising out of, or connected in any way to the Project or this Agreement. This mutual waiver includes, but is not limited to, damages related to loss of use, loss of profits, loss of income, loss of reputation, unrealized savings or diminution of property value and shall apply to any cause of action including negligence, strict liability, breach of contract and breach of warranty.
+      </div>
+
+      <div style="padding:4px 0 12px">
+        <div class="terms-check-row" onclick="toggleTerms('t1')">
+          <div class="terms-check-box" id="t1"> </div>
+          <div class="terms-check-label">I have read and agree to the General Conditions above (Terms 1&ndash;16).</div>
+        </div>
+        <div class="terms-check-row" onclick="toggleTerms('t2')">
+          <div class="terms-check-box" id="t2"> </div>
+          <div class="terms-check-label">I agree to the payment terms: full fee due upon Adicot submitting client-approved documents. Design changes are billed at $225/hr.</div>
+        </div>
+        <div class="terms-check-row" onclick="toggleTerms('t3')">
+          <div class="terms-check-box" id="t3"> </div>
+          <div class="terms-check-label">I authorize Adicot, Inc. to begin work upon receipt of background drawings and a fully executed contract.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sign-section" id="sign-anchor">
+      <div class="sign-text"><strong>Ready to proceed?</strong>By submitting, you execute this agreement and authorize Adicot, Inc. to begin work upon receipt of background drawings.</div>
+      <button class="btn-sign" id="signButton" onclick="handleSubmit()" disabled>Sign &amp; Submit &#8594;</button>
+    </div>
+    <button class="btn-print" onclick="window.print()">Print a copy of this form</button>
+    </div><!-- /client-only -->
+
+    <div class="admin-only">
+      <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Admin Approval</div><div class="divider-line"></div></div>
+      <div class="admin-actions">
+        <div class="admin-status" id="adminStatus">Edit fields above, then approve to draft the Gmail email.</div>
+        <button class="btn-admin secondary" onclick="handleAdminApprove('questions')">Approve &amp; Draft Questions Email</button>
+        <button class="btn-admin" onclick="handleAdminApprove('proposal')">Approve &amp; Draft Proposal Email</button>
+      </div>
+    </div>
+  </div><!-- /panel-left -->
+  <div class="panel-right">
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Project Specifications</div><div class="divider-line"></div></div>
+    <div class="wo-intro">Please review and complete the project specifications below. Fields marked <strong style="color:#2D6A2D">Auto-filled</strong> were extracted from your drawings &#8212; verify them and correct anything that looks wrong.</div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Services Requested</div></div>
+      <div class="cb-group">
+        <div class="cb-item checked" id="cb-lc" onclick="toggleService('lc')"><div class="cb-box" id="box-lc">&#10003;</div><div style="flex:1"><div class="cb-text">Load Calculation</div><div class="cb-sub">Cooling &amp; heating load, ventilation, air balance</div></div><div class="cb-fee" id="fee-lc"></div></div>
+        <div class="cb-item" id="cb-ec" onclick="toggleService('ec')"><div class="cb-box" id="box-ec"></div><div style="flex:1"><div class="cb-text">Energy Compliance</div><div class="cb-sub" id="ec-sub">Energy compliance documentation per FECC / ASHRAE 90.1</div></div><div class="cb-fee" id="fee-ec"></div></div>
+        <div class="cb-item" id="cb-hd" onclick="toggleService('hd')"><div class="cb-box" id="box-hd"></div><div style="flex:1"><div class="cb-text">HVAC/Mechanical Design</div><div class="cb-sub">Full mechanical design, equipment selection, duct layout</div></div><div class="cb-fee" id="fee-hd"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Building Basics</div></div>
+      <div class="field-row"><label class="field-label">Building Status</label><select class="field-input" id="inputStatus"><option value="">Select&#8230;</option><option value="Tenant Buildout">Tenant Buildout</option><option value="New Construction">New Construction</option><option value="New Addition">New Addition</option><option value="Renovation">Renovation</option></select></div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Approx. Area (SF)</label><input class="field-input" type="text" id="inputArea" placeholder="e.g. 1440" oninput="window._totalCostSet=false; calculateFee(); updateEngagementDays()"/></div>
+        <div class="field-row"><label class="field-label">Total Occupants</label><input class="field-input" type="text" id="inputOccupants" placeholder="e.g. 43"/></div>
+      </div>
+      <div class="field-row"><label class="field-label">Primary Orientation (main facade faces)</label><select class="field-input" id="inputOrientation"><option value="">Select&#8230;</option><option value="North">North</option><option value="Northeast">Northeast</option><option value="East">East</option><option value="Southeast">Southeast</option><option value="South">South</option><option value="Southwest">Southwest</option><option value="West">West</option><option value="Northwest">Northwest</option></select></div>
+      <div class="info-box">Standard indoor design conditions are 75&deg;F / 50% RH. Change only if the project specifies otherwise.</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Design Temp (&deg;F)</label><input class="field-input" type="text" id="inputDesignTemp" placeholder="75"/></div>
+        <div class="field-row"><label class="field-label">Design RH (%)</label><input class="field-input" type="text" id="inputDesignRH" placeholder="50"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Roof &amp; Ceiling</div></div>
+      <div id="roofSpecificFields">
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Deck / Frame Type</label><select class="field-input" id="inputDeckType"><option value="">Select&#8230;</option><option value="Steel deck">Steel deck</option><option value="Concrete deck">Concrete deck</option><option value="Wood deck">Wood deck</option><option value="Metal frame">Metal frame</option><option value="Wood frame">Wood frame</option><option value="Other">Other</option></select></div>
+        <div class="field-row"><label class="field-label">Roof Covering</label><select class="field-input" id="inputRoofCover"><option value="">Select&#8230;</option><option value="TPO">TPO</option><option value="EPDM">EPDM</option><option value="BUR/Modified bitumen">BUR/Modified bitumen</option><option value="Metal">Metal</option><option value="Tile">Tile</option><option value="Shingle">Shingle</option><option value="Other">Other</option></select></div>
+      </div>
+      <div class="two-col">
+        <div class="field-row" style="display:none"><label class="field-label">Insulation Position</label><select class="field-input" id="inputInsulPosition"><option value="">Select&#8230;</option><option value="Above deck">Above deck</option><option value="Below deck/at ceiling">Below deck/at ceiling</option><option value="Both">Both</option><option value="Other">Other</option></select></div>
+        <div class="field-row"><label class="field-label">Roof Color</label><select class="field-input" id="inputRoofColor"><option value="">Select&#8230;</option><option value="Light">Light (white, light gray, tan)</option><option value="Medium">Medium (medium gray)</option><option value="Dark">Dark (dark gray, dark brown)</option></select></div>
+      </div>
+      <div class="field-row"><label class="field-label">Roof R-Value</label><input class="field-input" type="text" id="inputRoofR" placeholder="e.g. R-30"/></div>
+      </div><!-- /roofSpecificFields -->
+      <div class="field-row"><label class="field-label">Suspended Ceiling Below Deck?</label><select class="field-input" id="inputSuspCeil" onchange="checkAttic()"><option value="">Select&#8230;</option><option value="Suspended ACT (T-bar)">Suspended ACT (T-bar)</option><option value="GWB">GWB</option><option value="Open to structure">Open to structure</option><option value="Conditioned space above — no roof load">Conditioned space above &#8212; no roof load</option><option value="Other">Other</option></select></div>
+      <div class="cond-block" id="atticBlock" style="display:none">
+        <div class="field-row"><label class="field-label">Attic / Plenum Condition</label><select class="field-input" id="inputAtticCond"><option value="">Select&#8230;</option><option value="Sealed/conditioned plenum">Sealed/conditioned plenum</option><option value="Vented attic">Vented attic</option><option value="None (flat roof)">None (flat roof)</option><option value="Other">Other</option></select><div class="hint">Vented vs. sealed affects CLTD roof type selection</div></div>
+      </div>
+      <div class="field-row"><label class="field-label">Default Ceiling Height</label><input class="field-input" type="text" id="inputCeilHeight" placeholder="e.g. 10'-0&quot;"/><div class="hint">Note exceptions in Project Notes</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Walls, Floor &amp; Glass</div></div>
+      <div class="wo-section-title">Exterior Walls</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Finish</label><select class="field-input" id="inputWallFinish"><option value="">Select&#8230;</option><option value="Stucco">Stucco</option><option value="EIFS">EIFS</option><option value="Brick">Brick</option><option value="Metal panel">Metal panel</option><option value="Other">Other</option></select></div>
+        <div class="field-row"><label class="field-label">Construction</label><select class="field-input" id="inputWallConst"><option value="">Select&#8230;</option><option value="CMU">CMU</option><option value="CMU + rigid insul">CMU + rigid insul</option><option value="ICF">ICF</option><option value="Steel stud + batt">Steel stud + batt</option><option value="Steel stud + rigid insul">Steel stud + rigid insul</option><option value="Wood frame">Wood frame</option><option value="Other">Other</option></select></div>
+      </div>
+      <div class="three-col">
+        <div class="field-row"><label class="field-label">Color</label><select class="field-input" id="inputWallColor"><option value="">Select&#8230;</option><option value="Light">Light</option><option value="Medium">Medium</option><option value="Dark">Dark</option></select></div>
+        <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" id="inputWallR" placeholder="e.g. R-6"/></div>
+        <div class="field-row"><label class="field-label">Exterior Wall Height</label><input class="field-input" type="text" id="inputWallHeight" placeholder="e.g. 14'-0&quot;"/></div>
+      </div>
+      <div class="wo-section-title" style="margin-top:8px">Partition Walls</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Construction</label><select class="field-input" id="inputPartConst"><option value="NA">NA &#8212; no insulated partitions</option><option value="Metal stud (steel frame)">Metal stud (steel frame)</option><option value="Wood stud">Wood stud</option><option value="Concrete Block / CMU">Concrete Block / CMU</option></select></div>
+        <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" id="inputPartR" placeholder="NA or R-value"/></div>
+      </div>
+      <div class="wo-section-title" style="margin-top:8px">Flooring</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Type</label><select class="field-input" id="inputFloorType"><option value="">Select&#8230;</option><option value="Slab on grade">Slab on grade &#8212; no floor load</option><option value="Floor over conditioned space">Floor over conditioned space &#8212; no floor load</option><option value="Floor over unconditioned space">Floor over unconditioned space (parking garage, crawl space)</option><option value="Wood frame over unconditioned space">Wood frame over unconditioned space</option><option value="Elevated / exterior exposure">Elevated / exterior exposure (piers, cantilever)</option></select></div>
+        <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" id="inputFloorR" placeholder="NONE or R-value"/></div>
+      </div>
+      <div class="wo-section-title" style="margin-top:8px">Glass</div>
+      <div class="info-box">Window and door dimensions must be labeled on submitted drawings. Unmeasured openings require field verification.</div>
+      <div class="field-row"><label class="field-label">How will you enter glass properties?</label><select class="field-input" id="inputGlassMode" onchange="checkGlass()"><option value="U-Factor & SHGC">U-Factor &amp; SHGC</option><option value="Window Properties">Window Properties</option><option value="No glass">No glass</option></select></div>
+      <div id="glassWindowProps" style="display:none">
+        <div class="three-col">
+          <div class="field-row"><label class="field-label">Frame Type</label><select class="field-input" id="inputGlassFrame" onchange="updateGlassFromProps()"><option value="">Select&#8230;</option><option value="Metal">Metal</option><option value="Metal with Thermal Break">Metal with Thermal Break</option><option value="Nonmetal or Metal Clad">Nonmetal or Metal Clad</option><option value="Glazed Block">Glazed Block</option></select></div>
+          <div class="field-row"><label class="field-label">Glazing</label><select class="field-input" id="inputGlassGlazing" onchange="updateGlassFromProps()"><option value="">Select&#8230;</option><option value="Single">Single</option><option value="Double">Double</option><option value="Glazed Block">Glazed Block</option></select></div>
+          <div class="field-row"><label class="field-label">Tint</label><select class="field-input" id="inputGlassTint" onchange="updateGlassFromProps()"><option value="">Select&#8230;</option><option value="Clear">Clear</option><option value="Tinted">Tinted</option></select></div>
+        </div>
+        <div class="hint" style="margin-bottom:8px">U-Factor &amp; SHGC below auto-fill from IECC Table C303.1.3 when all three are picked. You can still edit them.</div>
+      </div>
+      <div id="glassInputs">
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">U-Factor</label><input class="field-input" type="text" id="inputFixedU" placeholder="e.g. 0.28"/></div>
+          <div class="field-row"><label class="field-label">SHGC</label><input class="field-input" type="text" id="inputFixedSHGC" placeholder="e.g. 0.24"/></div>
+        </div>
+        <div class="two-col" style="display:none">
+          <div class="field-row"><label class="field-label">Operable &#8212; U-Factor <span style="font-weight:400;color:var(--light)">(if applicable)</span></label><input class="field-input" type="text" id="inputOperU" placeholder="&#8212;"/></div>
+          <div class="field-row"><label class="field-label">Operable &#8212; SHGC</label><input class="field-input" type="text" id="inputOperSHGC" placeholder="&#8212;"/></div>
+        </div>
+      </div>
+      <div class="field-row"><label class="field-label">Opaque Door Type</label><select class="field-input" id="inputDoorType"><option value="">Select&#8230;</option><option value="Insulated Metal">Insulated Metal</option><option value="Hollow metal">Hollow metal</option><option value="Solid wood">Solid wood</option><option value="Storefront/glass">Storefront/glass</option><option value="None">None</option></select></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Internal Loads</div></div>
+      <div class="field-row"><label class="field-label">Occupancy Type</label><select class="field-input" id="inputOccType" onchange="updateOccDefaults(); calculateFee()"><option value="">Select&#8230;</option><option value="Dining / Fast food">Dining / Fast food</option><option value="Food prep / Kitchen">Food prep / Kitchen</option><option value="Office">Office</option><option value="Retail">Retail</option><option value="Medical office">Medical office</option><option value="Assembly / Classrooms">Assembly / Classrooms</option><option value="Warehouse">Warehouse</option><option value="Residential">Residential</option><option value="Other">Other</option></select></div>
+      <div class="field-row admin-only"><label class="field-label">Insurance Category <span style="font-weight:400;color:var(--light)">(admin tracking)</span></label><select class="field-input" id="inputInsurance"><option value="">Select&#8230;</option><option value="Amusement Parks">Amusement Parks</option><option value="Apartments">Apartments</option><option value="Airport Terminals">Airport Terminals</option><option value="Arenas/Sports Facilities">Arenas/Sports Facilities</option><option value="Asbestos Abatement">Asbestos Abatement</option><option value="Bridges/Trestles">Bridges/Trestles</option><option value="Casinos">Casinos</option><option value="Chemical/Pharmaceutical Plants">Chemical/Pharmaceutical Plants</option><option value="Churches">Churches</option><option value="Colleges/Universities">Colleges/Universities</option><option value="Condominiums">Condominiums</option><option value="Convalescent/retirement Facilities">Convalescent/retirement Facilities</option><option value="Convention Centers">Convention Centers</option><option value="Correctional Facilities">Correctional Facilities</option><option value="Courthouses">Courthouses</option><option value="Dams/Reservoirs">Dams/Reservoirs</option><option value="Energy Only">Energy Only</option><option value="Hospitals">Hospitals</option><option value="Hotels/Motels">Hotels/Motels</option><option value="Libraries/Musuems">Libraries/Musuems</option><option value="Marine/Offshore Facilities/Docks/Piers">Marine/Offshore Facilities/Docks/Piers</option><option value="Mass Transit Systems">Mass Transit Systems</option><option value="Mines/Quarries">Mines/Quarries</option><option value="Mold Abatement">Mold Abatement</option><option value="Multi-Family Townhomes">Multi-Family Townhomes</option><option value="Offices">Offices</option><option value="Oil Refineries/Pipelines">Oil Refineries/Pipelines</option><option value="Parks/Playgrounds">Parks/Playgrounds</option><option value="Parking Garages">Parking Garages</option><option value="Phase I Property Assessments">Phase I Property Assessments</option><option value="Phase II &amp; III Property Evaluations">Phase II &amp; III Property Evaluations</option><option value="Power Plants/Nuclear Facilities">Power Plants/Nuclear Facilities</option><option value="Pools">Pools</option><option value="Processing Manufacturing Facilities">Processing Manufacturing Facilities</option><option value="Private Schools">Private Schools</option><option value="Public Schools">Public Schools</option><option value="Remediation Engineering">Remediation Engineering</option><option value="Restaurants">Restaurants</option><option value="Retail/Malls/Shoping Centers">Retail/Malls/Shoping Centers</option><option value="Roads &amp; Highways">Roads &amp; Highways</option><option value="Single Family Residential-Custom">Single Family Residential-Custom</option><option value="Single Family Residential-Subdivision">Single Family Residential-Subdivision</option><option value="Utilities">Utilities</option><option value="Waster Brokering">Waster Brokering</option><option value="Water/Wastewater Treatment Systems">Water/Wastewater Treatment Systems</option><option value="Wetland Mitigation">Wetland Mitigation</option><option value="Other">Other</option></select></div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Lighting W/SF</label><input class="field-input" type="text" id="inputLightW" placeholder="e.g. 0.71"/><div class="dynamic-label" id="lightingCodeMax" style="display:none"></div></div>
+        <div class="field-row"><label class="field-label">Equipment / Plug Load</label><input class="field-input" type="text" id="inputEquipW" placeholder="W/sf, BTU/h, or description"/><div class="dynamic-label" id="equipDefault" style="display:none"></div></div>
+      </div>
+      <div class="field-row"><label class="field-label">Heat Generating Equipment</label><textarea class="field-input" id="inputHeatEquip" placeholder="List each piece of equipment with sensible and latent Btu/h if known."></textarea></div>
+      <div id="kitchenExhSection" style="display:none">
+        <div class="info-box orange">Kitchen exhaust hood and makeup air system design is by others and not included in Adicot&apos;s scope. We can provide an exhaust CFM estimate based on your equipment inventory.</div>
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">Equipment under hood + linear distance</label><input class="field-input" type="text" id="inputKitchenExh" placeholder="e.g. 4ft fryer, 6ft griddle, 2ft range"/><div class="hint">Adrienne will calculate CFM from this</div></div>
+          <div class="field-row"><label class="field-label">Makeup Air provided (if known)</label><input class="field-input" type="text" id="inputMakeupAir" placeholder="CFM or N/A"/></div>
+        </div>
+      </div>
+      <div id="infiltrationSection" style="display:none">
+        <div class="field-row"><label class="field-label">Construction Quality</label><select class="field-input" id="inputInfiltration"><option value="">Select&#8230;</option><option value="Tight">Tight &#8212; well-sealed new construction (~0.15 ACH)</option><option value="Average">Average (~0.35 ACH)</option><option value="Loose">Loose &#8212; older building, frequent door use (~0.50 ACH)</option></select></div>
+      </div>
+    </div>
+
+    <div class="card" id="hvacCard">
+      <div class="card-header"><div class="card-title">HVAC System</div><div class="card-tag" id="hvacTag">Load Calc + Energy</div></div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">New or Existing?</label><select class="field-input" id="inputACNew"><option value="">Select&#8230;</option><option value="New">New</option><option value="Existing — reuse">Existing &#8212; reuse</option><option value="Mix of both">Mix of both</option></select></div>
+        <div class="field-row"><label class="field-label">Mounting Location</label><select class="field-input" id="inputACMount"><option value="">Select&#8230;</option><option value="Ground-level slab">Ground-level slab</option><option value="Rooftop">Rooftop</option><option value="Sidewall">Sidewall</option><option value="Other">Other</option></select></div>
+      </div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">System Type</label><select class="field-input" id="inputHvacType"><option value="">Select&#8230;</option><option value="Split">Split</option><option value="Package">Package</option><option value="Mini-split">Mini-split</option><option value="VRF">VRF</option><option value="PTAC">PTAC</option><option value="Other">Other</option></select></div>
+        <div class="field-row"><label class="field-label">Heat Type</label><select class="field-input" id="inputHeatType"><option value="">Select&#8230;</option><option value="Heat Pump">Heat Pump</option><option value="Heat Strip">Heat Strip</option><option value="Gas Furnace">Gas Furnace</option><option value="Other">Other</option></select></div>
+      </div>
+      <div id="efficiencySection" style="display:none">
+        <div class="field-row"><label class="field-label">Cooling System Type</label><select class="field-input" id="inputSysType" onchange="updateEfficiencyLabels()"><option value="">Select&#8230;</option><option value="Split DX">Split DX</option><option value="Heat Pump (Split)">Heat Pump (Split)</option><option value="Mini-split">Mini-split</option><option value="RTU (cooling only)">RTU (cooling only)</option><option value="RTU (gas heat)">RTU (gas heat)</option><option value="RTU (electric heat)">RTU (electric heat)</option><option value="RTU (heat pump)">RTU (heat pump)</option><option value="PTAC">PTAC</option><option value="Chiller">Chiller</option></select></div>
+        <div id="efficiencyInputs" style="display:none">
+          <div class="two-col">
+            <div class="field-row"><label class="field-label" id="coolEffLabel">Cooling Efficiency</label><input class="field-input" type="text" id="inputCoolEff" placeholder="Enter value"/></div>
+            <div class="field-row" id="heatEffRow" style="display:none"><label class="field-label" id="heatEffLabel">Heating Efficiency</label><input class="field-input" type="text" id="inputHeatEff" placeholder="Enter value"/></div>
+          </div>
+          <div class="field-row"><label class="field-label">Supplemental Heat Strip?</label><select class="field-input" id="inputHasStrip" onchange="checkStrip()"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+          <div class="cond-block" id="stripBlock" style="display:none"><div class="field-row"><label class="field-label">Heat Strip COP</label><input class="field-input" type="text" id="inputStripCOP" placeholder="e.g. 1.0"/><div class="hint">Electric resistance = 1.0 unless otherwise specified</div></div></div>
+        </div>
+        <div class="field-row" style="margin-top:8px"><label class="field-label">Hot Water Heater Type</label><select class="field-input" id="inputHWType" onchange="checkHW()"><option value="">Select&#8230;</option><option value="Tank — electric">Tank &#8212; electric</option><option value="Tank — gas">Tank &#8212; gas</option><option value="Tankless — electric">Tankless &#8212; electric</option><option value="Tankless — gas">Tankless &#8212; gas</option><option value="None">None</option></select></div>
+        <div class="cond-block" id="hwEffBlock" style="display:none"><div class="field-row"><label class="field-label">Hot Water Efficiency (EF or UEF)</label><input class="field-input" type="text" id="inputHWEff" placeholder="e.g. UEF 0.92"/><div class="hint">EF (older) or UEF (current) &#8212; either accepted</div></div></div>
+        <div class="cond-block" id="hwCapacityBlock" style="display:none"><div class="field-row"><label class="field-label">Tank Capacity (gallons)</label><input class="field-input" type="text" id="inputHWCapacity" placeholder="e.g. 40, 50, 80"/></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Project Notes</div><div class="card-tag">Optional</div></div>
+      <div class="field-row"><textarea class="field-input" id="inputNotes" rows="4" placeholder="Variable ceiling heights, unconditioned makeup air, special equipment, questions for Adrienne&#8230;"></textarea></div>
+    </div>
+
+  </div><!-- /panel-right -->
+  </div><!-- /two-panel -->
+  </div>
+
+  <div class="success-state" id="successState">
+    <div class="success-icon">&#10003;</div>
+    <div class="success-title">Agreement executed.</div>
+    <p class="success-sub">Your project specifications have been submitted and this project is now in Adrienne&apos;s queue.<br/>You&apos;ll receive a confirmation email shortly.</p>
+    <div class="next-steps">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#9CA3AF;margin-bottom:10px">What happens next</div>
+      <div class="next-step"><div class="step-num">1</div><span>Adrienne reviews your project specifications and confirms all information</span></div>
+      <div class="next-step"><div class="step-num">2</div><span>You&apos;ll receive a project intake confirmation within 1 business day</span></div>
+      <div class="next-step"><div class="step-num">3</div><span>Preliminary calculations begin once background drawings are confirmed</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxYiwC-k0rn_SiZLyIoa3suxwTNl0ODV08z-O4FfC-akBjkIac3Ig54GMfEAyflRrNE/exec';
+
+const LIGHTING_MAXES = {
+  'Dining / Fast food':'0.76 W/SF (FBC max)','Food prep / Kitchen':'1.21 W/SF (FBC max)',
+  'Office':'0.82 W/SF (FBC max)','Retail':'1.26 W/SF (FBC max)',
+  'Medical office':'1.91 W/SF (FBC max)','Assembly / Classrooms':'1.11 W/SF (FBC max)','Warehouse':'0.66 W/SF (FBC max)',
+};
+const EQUIP_DEFAULTS = {
+  'Dining / Fast food':'1.5 W/SF (ASHRAE default)','Food prep / Kitchen':'4.0 W/SF (ASHRAE default)',
+  'Office':'1.0 W/SF (ASHRAE default)','Retail':'1.5 W/SF (ASHRAE default)',
+  'Medical office':'2.0 W/SF (ASHRAE default)','Assembly / Classrooms':'1.5 W/SF (ASHRAE default)','Warehouse':'0.5 W/SF (ASHRAE default)',
+};
+const COOL_METRIC = {'Split DX':'SEER2','Heat Pump (Split)':'SEER2','Mini-split':'SEER2','RTU (cooling only)':'IEER','RTU (gas heat)':'IEER','RTU (electric heat)':'IEER','RTU (heat pump)':'IEER','PTAC':'EER','Chiller':'kW/ton or COP'};
+const HEAT_METRIC = {'Heat Pump (Split)':'HSPF2','Mini-split':'HSPF2','RTU (heat pump)':'COP','RTU (electric heat)':'COP','RTU (gas heat)':'AFUE','PTAC':'COP'};
+const HAS_HEAT = ['Heat Pump (Split)','Mini-split','RTU (heat pump)','RTU (electric heat)','RTU (gas heat)','PTAC'];
+const FOOD_SVC = ['Dining / Fast food','Food prep / Kitchen'];
+
+let svcLC = true, svcEC = false, svcHD = false;
+let servicePricingData = [];
+let licensedStatesData = [];
+let termsChecked = {t1:false,t2:false,t3:false};
+let projectId = null;
+let jobNoGlobal = '';
+let portalMode = 'client';
+
+function applyPortalMode(m) {
+  portalMode = (m === 'admin') ? 'admin' : 'client';
+  document.body.classList.toggle('mode-admin', portalMode === 'admin');
+  document.body.classList.toggle('mode-client', portalMode === 'client');
+  document.querySelectorAll('[data-admin-edit]').forEach(el => {
+    if (portalMode === 'admin') el.setAttribute('contenteditable', 'true');
+    else el.removeAttribute('contenteditable');
+  });
+}
+
+const SNIPPET_FIELD_TO_INPUT = {
+  sf: 'inputArea', occupants: 'inputOccupants', orientation: 'inputOrientation',
+  buildingStatus: 'inputStatus', projectAddress: 'projectAddress',
+  roofRValue: 'inputRoofR', roofColor: 'inputRoofColor', deckType: 'inputDeckType',
+  roofCover: 'inputRoofCover', insulPosition: 'inputInsulPosition',
+  suspCeiling: 'inputSuspCeil', atticCond: 'inputAtticCond',
+  wallConstruction: 'inputWallConst', wallHeight: 'inputWallHeight',
+  wallFinish: 'inputWallFinish', wallColor: 'inputWallColor', wallRValue: 'inputWallR',
+  partConstruction: 'inputPartConst', partRValue: 'inputPartR',
+  floorType: 'inputFloorType', floorRValue: 'inputFloorR',
+  glassU: 'inputFixedU', glassSHGC: 'inputFixedSHGC',
+  doorType: 'inputDoorType', ceilingHeight: 'inputCeilHeight',
+  lightingWattsPerSF: 'inputLightW', equipWattsPerSF: 'inputEquipW',
+  heatGenEquipment: 'inputHeatEquip',
+  acNewExisting: 'inputACNew', acMounting: 'inputACMount',
+  systemType: 'inputSysType', coolingEff: 'inputCoolEff', heatingEff: 'inputHeatEff',
+  hwType: 'inputHWType', hwEfficiency: 'inputHWEff', hwCapacityGal: 'inputHWCapacity',
+  infiltration: 'inputInfiltration',
+};
+
+function renderSnippets(map) {
+  if (!map || typeof map !== 'object') return;
+  const seenRows = new Set();
+  Object.keys(map).forEach(field => {
+    const url = map[field];
+    if (!url) return;
+    const inputId = SNIPPET_FIELD_TO_INPUT[field];
+    if (!inputId) return;
+    const target = document.getElementById(inputId);
+    if (!target) return;
+    const row = target.closest('.field-row') || target.closest('.meta-item');
+    if (!row || seenRows.has(row)) return;
+    seenRows.add(row);
+
+    const box = document.createElement('div');
+    box.className = 'snip-box';
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = field + ' snippet';
+    box.appendChild(img);
+    const cap = document.createElement('div');
+    cap.className = 'snip-cap';
+    cap.textContent = field;
+    box.appendChild(cap);
+
+    // field-row: append inside (block layout). meta-item: insert as sibling
+    // after the row (meta-item is a flex row — appending inside breaks layout).
+    if (row.classList.contains('field-row')) row.appendChild(box);
+    else row.parentNode.insertBefore(box, row.nextSibling);
+
+    const label = row.querySelector('.field-label, .meta-label');
+    if (label && !label.querySelector('.snip-toggle')) {
+      const tog = document.createElement('span');
+      tog.className = 'snip-toggle';
+      tog.textContent = 'Source';
+      tog.onclick = () => {
+        const open = box.classList.toggle('open');
+        tog.textContent = open ? 'Hide' : 'Source';
+      };
+      label.appendChild(tog);
+    }
+  });
+}
+
+const STATE_ENERGY_CODES = {
+  FL: '2023 Florida Building Code, Energy Conservation',
+  LA: '2021 International Energy Conservation Code (IECC)',
+  AR: '2009 IECC / ASHRAE 90.1-2007',
+  OK: '2006 International Energy Conservation Code (IECC)',
+  MA: '2020 Massachusetts Energy Code (IECC 2018-based)',
+  PA: '2021 International Energy Conservation Code (IECC)',
+  TX: '2021 IECC / ASHRAE 90.1-2019',
+  WV: 'ASHRAE 90.1-2013',
+  WY: '2018 IECC (confirm with local AHJ — no statewide mandate)',
+  IL: '2024 Illinois Energy Conservation Code (IECC 2024-based)',
+};
+
+function getEnergyCodeLabel() {
+  const state = getProjectState();
+  return STATE_ENERGY_CODES[state] || 'IECC / ASHRAE 90.1 (confirm applicable edition with AHJ)';
+}
+
+const DELIVERABLES = {
+  lc: [
+    'Load Calculations (ASHRAE CLTD method)',
+    'Outside Air Calculation',
+    'Air Balance Report',
+    'Zone Map',
+  ],
+  ec: [],
+  hd: [
+    'Full Mechanical Design Drawings',
+    'Equipment Selection & Schedule',
+    'Duct Layout & Sizing',
+    'Equipment Specifications',
+  ],
+  always: [
+    'One design review included',
+    'All documents emailed as digitally signed PDF',
+  ],
+};
+
+function updateDeliverables() {
+  const list = document.getElementById('deliverablesList');
+  if (!list) return;
+  const ecSub = document.getElementById('ec-sub');
+  const codeLabel = getEnergyCodeLabel();
+  if (ecSub) ecSub.textContent = 'Energy compliance documentation per ' + codeLabel;
+  const items = [];
+  if (svcLC) items.push(...DELIVERABLES.lc);
+  if (svcEC) items.push('Energy Code Compliance Documentation per ' + codeLabel);
+  if (svcHD) items.push(...DELIVERABLES.hd);
+  items.push(...DELIVERABLES.always);
+  list.innerHTML = items.map(d => '<li>' + d + '</li>').join('');
+}
+
+function calculateEngagementDays() {
+  const sf    = parseFloat((document.getElementById('inputArea').value || '').replace(/,/g,'')) || 0;
+  const state = getProjectState();
+  if (sf > 50000) return null;
+  let base;
+  if (svcHD)           base = 25;
+  else if (svcLC && svcEC) base = 15;
+  else if (svcLC)      base = 10;
+  else if (svcEC)      base = 7;
+  else                 base = 10;
+  let mult = 1.0;
+  if (sf > 0 && sf < 2000)         mult = 0.7;
+  else if (sf >= 2000 && sf <= 7500)  mult = 1.0;
+  else if (sf > 7500 && sf <= 20000)  mult = 1.3;
+  else if (sf > 20000 && sf <= 50000) mult = 1.7;
+  let days = base * mult;
+  if (state && !isLicensedState(state)) days += 30;
+  return Math.max(5, Math.ceil(days / 5) * 5);
+}
+
+function updateEngagementDays() {
+  const el   = document.getElementById('inputEngagementDays');
+  const note = document.getElementById('engagementTBDNote');
+  if (!el) return;
+  const days = calculateEngagementDays();
+  if (days === null) {
+    el.textContent = 'TBD';
+    if (note) note.style.display = 'block';
+  } else {
+    el.textContent = days;
+    if (note) note.style.display = 'none';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateServiceSections();
+  updateSignButton();
+  document.getElementById('proposalDate').textContent =
+    new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  wireAdminEditSync();
+  parseUrlAndPrefill();
+});
+
+function wireAdminEditSync() {
+  // Fee total → Due at delivery mirror, lock auto-recalc
+  const feeAmt = document.getElementById('feeAmount');
+  const feeDel = document.getElementById('feeDelivery');
+  if (feeAmt) feeAmt.addEventListener('input', () => {
+    window._totalCostSet = true;
+    if (feeDel) feeDel.textContent = feeAmt.textContent;
+  });
+  // Proposal area ↔ right-panel area
+  const propArea = document.getElementById('proposalArea');
+  const inputArea = document.getElementById('inputArea');
+  if (propArea && inputArea) {
+    propArea.addEventListener('input', () => {
+      const num = (propArea.textContent || '').replace(/[^0-9.]/g,'');
+      if (inputArea.value !== num) {
+        inputArea.value = num;
+        window._totalCostSet = false;
+        calculateFee();
+        updateEngagementDays();
+      }
+    });
+    inputArea.addEventListener('input', () => {
+      if (portalMode !== 'admin') return;
+      const v = (inputArea.value || '').trim();
+      const display = v ? v + ' SF' : '—';
+      if (propArea.textContent !== display) propArea.textContent = display;
+    });
+  }
+}
+
+window.addEventListener('message', e => {
+  if (!e.data || typeof e.data !== 'object') return;
+  if (e.data._pricingData) {
+    if (e.data._servicePricing) {
+      try { servicePricingData = JSON.parse(e.data._servicePricing); } catch(err) {}
+    }
+    if (e.data._licensedStates) {
+      try { licensedStatesData = JSON.parse(e.data._licensedStates); } catch(err) {}
+    }
+    calculateFee();
+    updateStatuteText();
+    updateDeliverables();
+    updateEngagementDays();
+    const days = getEngagementDays();
+    const el = document.getElementById('inputEngagementDays');
+    if (el && (parseInt(el.textContent) === 15 || !el.textContent.trim())) el.textContent = days;
+    return;
+  }
+  if (e.data.type === 'ADMIN_APPROVE_RESULT') {
+    document.querySelectorAll('.btn-admin').forEach(b => b.disabled = false);
+    const status = document.getElementById('adminStatus');
+    if (status) {
+      if (e.data.status === 'ok') {
+        status.textContent = e.data.mode === 'proposal'
+          ? '✓ Proposal draft created in Gmail.'
+          : '✓ Questions draft created in Gmail.';
+      } else {
+        status.textContent = '✗ ' + (e.data.message || 'Error creating draft.');
+      }
+    }
+    return;
+  }
+  if (e.data.type) return;
+  prefillFromData(e.data);
+});
+
+function parseUrlAndPrefill() {
+  const p = new URLSearchParams(window.location.search);
+  const data = {};
+  for (const [k,v] of p.entries()) data[k] = v;
+  if (Object.keys(data).length > 0) prefillFromData(data);
+}
+
+function prefillFromData(params) {
+  const get = key => params[key] || '';
+  projectId = get('project') || get('jobNo') || get('_id');
+  jobNoGlobal = get('jobNo') || '';
+  applyPortalMode(params._mode || get('mode') || 'client');
+
+  const setText = (id, val) => {
+    if (!val) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = val;
+    el.classList.add('prefilled');
+    if (el.tagName === 'TEXTAREA') {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+  };
+  const FIELD_ALIASES = {
+    'concrete block':'CMU','concrete masonry unit':'CMU','cmu block':'CMU','masonry block':'CMU',
+    'concrete masonry unit + rigid insulation':'CMU + rigid insul',
+    'cmu + rigid insulation':'CMU + rigid insul','cmu with rigid insulation':'CMU + rigid insul',
+    'light tpo':'TPO','white tpo':'TPO','tan tpo':'TPO','white':'Light','light gray':'Light','tan/buff':'Light','tan buff':'Light','medium gray':'Medium','dark gray':'Dark','dark brown':'Dark',
+    'tenant improvement':'Tenant Buildout','ti':'Tenant Buildout',
+    'tenant build out':'Tenant Buildout',
+    'wood frame structure':'Wood frame',
+    'light gauge steel':'Steel stud + batt','light gage steel':'Steel stud + batt',
+    'north':'North','south':'South','east':'East','west':'West',
+    'new addition':'New Addition','addition':'New Addition',
+    'renovation / remodel':'Renovation','remodel':'Renovation',
+    'suspended act':'Suspended ACT (T-bar)','act ceiling':'Suspended ACT (T-bar)',
+    'suspended ceiling':'Suspended ACT (T-bar)',
+    'sealed plenum':'Sealed/conditioned plenum','conditioned plenum':'Sealed/conditioned plenum',
+    'vented':'Vented attic','vented attic':'Vented attic',
+    'above deck':'Above deck','below deck':'Below deck/at ceiling',
+    'at ceiling':'Below deck/at ceiling',
+    'insulated metal door':'Insulated Metal','insulated metal':'Insulated Metal',
+    'hollow metal door':'Hollow metal',
+    'slab on grade':'Slab on grade','slab':'Slab on grade',
+    'new construction':'New Construction','existing':'Existing — reuse',
+    'rooftop':'Rooftop (RTU)','rtu':'Rooftop (RTU)',
+    'split':'Split system','split system':'Split system',
+    'heat pump':'Heat Pump (Split)',
+    'tank electric':'Tank — electric','tank gas':'Tank — gas',
+    'tankless electric':'Tankless — electric','tankless gas':'Tankless — gas',
+  };
+  const setSelect = (id, val) => {
+    if (!val) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
+    const nv = norm(val);
+    for (let o of el.options) { if (o.value === val) { el.value = val; el.classList.add('prefilled'); return; } }
+    const aliased = FIELD_ALIASES[nv];
+    if (aliased) { for (let o of el.options) { if (o.value === aliased) { el.value = o.value; el.classList.add('prefilled'); return; } } }
+    for (let o of el.options) { if (o.value && norm(o.value) === nv) { el.value = o.value; el.classList.add('prefilled'); return; } }
+    for (let o of el.options) { if (o.value && (nv.includes(norm(o.value)) || norm(o.value).includes(nv))) { el.value = o.value; el.classList.add('prefilled'); return; } }
+  };
+
+  const name  = get('title') || get('projectName') || '';
+  const addr  = get('projectAddress') || '';
+  if (name) document.getElementById('projectName').textContent = name;
+  if (addr) document.getElementById('projectAddress').textContent = addr;
+
+  const owner   = get('propertyOwner');
+  const service = get('productService') || get('productservice');
+  const sf      = get('sf');
+  const cost    = get('totalCost');
+
+  if (owner)   document.getElementById('proposalOwner').textContent   = owner;
+  if (service) document.getElementById('proposalScope').textContent   = service;
+  if (service) document.getElementById('proposalService').textContent = service;
+  if (sf)      document.getElementById('proposalArea').textContent    = sf + ' SF';
+
+  const clientName    = get('clientName');
+  const clientCompany = get('clientCompany');
+  const clientEmail   = get('clientEmail') || get('clientemail');
+  const clientPhone   = get('clientPhone');
+  if (clientName || clientCompany) {
+    document.getElementById('proposalClient').textContent =
+      [clientName, clientCompany].filter(Boolean).join(' · ');
+  }
+  if (clientEmail || clientPhone) {
+    document.getElementById('proposalContact').textContent =
+      [clientEmail, clientPhone].filter(Boolean).join(' · ');
+  }
+  if (cost) {
+    const num = parseFloat(cost.toString().replace(/,/g,""));
+    if (!isNaN(num) && num > 0) {
+      document.getElementById('feeAmount').textContent   = '$' + num.toLocaleString();
+      document.getElementById('feeDelivery').textContent = '$' + num.toLocaleString();
+    }
+  }
+  if (service) {
+    const sv = service.toLowerCase();
+    if (sv.includes('load') || sv.includes('calc')) svcLC = true;
+    if (sv.includes('energy')) svcEC = true;
+    if (sv.includes('design') || sv.includes('mechanical')) svcHD = true;
+    if (svcHD && !svcLC && !svcEC) {
+      const svcCount = [sv.includes('load')||sv.includes('calc'), sv.includes('energy'),
+                        sv.includes('design')||sv.includes('mechanical')].filter(Boolean).length;
+      if (svcCount > 1 || sv.trim() === '') { svcLC = true; svcEC = true; }
+    }
+    updateServiceUI();
+    updateServiceSections();
+  }
+
+  setSelect('inputStatus',      get('buildingStatus'));
+  setText('inputArea',          sf);
+  setText('inputOccupants',     get('occupants'));
+  setSelect('inputOrientation', get('orientation') || get('orientationVerify') || get('primaryOrientation'));
+  setSelect('inputDeckType',    get('deckType'));
+  setSelect('inputRoofCover',   get('roofCover'));
+  setSelect('inputInsulPosition',get('insulPosition'));
+  setSelect('inputRoofColor',   get('roofColor'));
+  setText('inputRoofR',         get('roofRValue'));
+  setSelect('inputSuspCeil',    get('suspCeiling'));
+  setSelect('inputAtticCond',   get('atticCond'));
+  setText('inputCeilHeight',    get('ceilingHeight'));
+  setSelect('inputWallFinish',  get('wallFinish'));
+  setSelect('inputWallConst',   get('wallConstruction'));
+  setSelect('inputWallColor',   get('wallColor'));
+  setText('inputWallR',         get('wallRValue'));
+  setText('inputWallHeight',    get('wallHeight'));
+  const fixedU    = get('glassU') || get('glassFixedU');
+  const fixedSHGC = get('glassSHGC') || get('glassFixedSHGC');
+  setText('inputFixedU',    fixedU);
+  setText('inputFixedSHGC', fixedSHGC);
+  const operU    = get('glassOperU');
+  const operSHGC = get('glassOperSHGC');
+  setText('inputOperU',    operU    || fixedU);
+  setText('inputOperSHGC', operSHGC || fixedSHGC);
+  setSelect('inputDoorType',    get('doorType'));
+  setSelect('inputOccType',     get('occupancyType'));
+  setSelect('inputInsurance',   get('insurance'));
+  setText('inputLightW',        get('lightingWattsPerSF'));
+  setText('inputHeatEquip',     get('equipWattsPerSF') || get('heatGenEquipment'));
+  setText('inputKitchenExh',    get('kitchenExhCFM'));
+  setText('inputMakeupAir',     get('makeupAirCFM'));
+  setSelect('inputInfiltration',get('infiltration'));
+  setText('inputDesignTemp',    get('indoorTemp') || '75');
+  setText('inputDesignRH',      get('indoorRH') || '50');
+  setText('inputNotes',         get('description'));
+  setSelect('inputACNew',       get('acNewExisting'));
+  setSelect('inputACMount',     get('acMounting'));
+  setSelect('inputHvacType',    get('hvacType'));
+  setSelect('inputHeatType',    get('heatType'));
+  // HVAC system + efficiency fields
+  setSelect('inputSysType',     get('systemType'));
+  setText('inputCoolEff',       get('coolingEff'));
+  setText('inputHeatEff',       get('heatingEff'));
+  setSelect('inputHWType',      get('hwType'));
+  setText('inputHWEff',         get('hwEfficiency'));
+
+  checkAttic(); updateOccDefaults(); updateServiceSections(); updateEfficiencyLabels(); checkGlass(); checkHW(); updateStatuteText(); updateProposalScope(); updateDeliverables();
+
+  const engDays = parseInt(params['engagementDays'] || '0');
+  if (engDays > 0) {
+    document.getElementById('inputEngagementDays').textContent = engDays;
+  } else {
+    setTimeout(updateEngagementDays, 600);
+  }
+
+  const tc = parseFloat((params['totalCost'] || '0').toString().replace(/,/g,""));
+  if (tc > 0) {
+    window._totalCostSet = true;
+  } else {
+    window._totalCostSet = false;
+    calculateFee();
+  }
+
+  // Snippet display: prefer the combined snippetMap JSON; fall back to
+  // individual snippet* fields that the current .gs writes per data point.
+  const INDIVIDUAL_SNIPPET_FIELDS = {
+    snippetRoofRValue:       'roofRValue',
+    snippetWallConstruction: 'wallConstruction',
+    snippetCeilingHeight:    'ceilingHeight',
+    snippetProjectAddress:   'projectAddress',
+    snippetLightingWsf:      'lightingWattsPerSF',
+    snippetGlassValues:      'glassU',
+  };
+  const snippetMapRaw = get('snippetMap');
+  let snippetMap = null;
+  if (snippetMapRaw) {
+    try { snippetMap = JSON.parse(snippetMapRaw); } catch(e) {}
+  }
+  if (!snippetMap) {
+    snippetMap = {};
+    Object.keys(INDIVIDUAL_SNIPPET_FIELDS).forEach(wixKey => {
+      const url = get(wixKey);
+      if (url) snippetMap[INDIVIDUAL_SNIPPET_FIELDS[wixKey]] = url;
+    });
+  }
+  const statusEl = document.getElementById('adminStatus');
+  const keysFound = Object.keys(snippetMap);
+  if (statusEl) {
+    statusEl.textContent = keysFound.length
+      ? 'Snippets loaded: ' + keysFound.join(', ')
+      : 'No snippets found for this project.';
+  }
+  if (keysFound.length) renderSnippets(snippetMap);
+
+  // Deferred resize — runs after fonts and layout are complete
+  setTimeout(function() {
+    document.querySelectorAll('textarea.field-input').forEach(function(ta) {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+    });
+  }, 200);
+}
+
+function updateProposalScope() {
+  const parts = [];
+  if (svcLC) parts.push('Load Calculation');
+  if (svcEC) parts.push('Energy Compliance');
+  if (svcHD) parts.push('HVAC/Mechanical Design');
+  const label = parts.join(' + ') || '—';
+  document.getElementById('proposalScope').textContent = label;
+  document.getElementById('proposalService').textContent = label;
+}
+function toggleService(svc) {
+  window._totalCostSet = false;
+  if (svc==='lc') svcLC=!svcLC;
+  if (svc==='ec') svcEC=!svcEC;
+  if (svc==='hd') svcHD=!svcHD;
+  updateServiceUI(); updateServiceSections(); updateProposalScope(); updateDeliverables(); calculateFee(); updateEngagementDays();
+}
+function updateServiceUI() {
+  document.getElementById('cb-lc').classList.toggle('checked',svcLC);
+  document.getElementById('box-lc').textContent=svcLC?'✓':'';
+  document.getElementById('cb-ec').classList.toggle('checked',svcEC);
+  document.getElementById('box-ec').textContent=svcEC?'✓':'';
+  document.getElementById('cb-hd').classList.toggle('checked',svcHD);
+  document.getElementById('box-hd').textContent=svcHD?'✓':'';
+}
+function updateServiceSections() {
+  show('infiltrationSection',svcLC); show('efficiencySection',svcEC); updateServiceUI();
+}
+function checkAttic() {
+  const v = document.getElementById('inputSuspCeil').value;
+  const condAbove = v === 'Conditioned space above — no roof load';
+  show('atticBlock', !condAbove && (v.startsWith('Suspended') || v === 'GWB'));
+  show('roofSpecificFields', !condAbove);
+  let note = document.getElementById('condAboveNote');
+  if (condAbove) {
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'condAboveNote';
+      note.className = 'info-box';
+      note.style.marginBottom = '8px';
+      note.textContent = 'Roof/deck fields hidden — no roof load when conditioned space is above.';
+      document.getElementById('roofSpecificFields').after(note);
+    }
+    note.style.display = 'block';
+  } else if (note) {
+    note.style.display = 'none';
+  }
+}
+function checkGlass() {
+  const mode = document.getElementById('inputGlassMode').value;
+  show('glassInputs', mode !== 'No glass');
+  show('glassWindowProps', mode === 'Window Properties');
+}
+
+// IECC Table C303.1.3 — default U-factor and SHGC by frame / glazing / tint
+const U_FACTOR_TABLE = {
+  'Metal':                    { 'Single': 1.2,  'Double': 0.8 },
+  'Metal with Thermal Break': { 'Single': 1.1,  'Double': 0.65 },
+  'Nonmetal or Metal Clad':   { 'Single': 0.95, 'Double': 0.55 },
+  'Glazed Block':             { '*': 0.6 },
+};
+const SHGC_TABLE = {
+  'Single':       { 'Clear': 0.8, 'Tinted': 0.7 },
+  'Double':       { 'Clear': 0.7, 'Tinted': 0.6 },
+  'Glazed Block': { '*': 0.6 },
+};
+
+function updateGlassFromProps() {
+  const frame   = (document.getElementById('inputGlassFrame')||{}).value || '';
+  const glazing = (document.getElementById('inputGlassGlazing')||{}).value || '';
+  const tint    = (document.getElementById('inputGlassTint')||{}).value || '';
+  let u = null, shgc = null;
+  if (glazing === 'Glazed Block' || frame === 'Glazed Block') { u = 0.6; shgc = 0.6; }
+  else {
+    if (frame && glazing && U_FACTOR_TABLE[frame] && U_FACTOR_TABLE[frame][glazing] != null) u = U_FACTOR_TABLE[frame][glazing];
+    if (glazing && tint && SHGC_TABLE[glazing] && SHGC_TABLE[glazing][tint] != null) shgc = SHGC_TABLE[glazing][tint];
+  }
+  if (u !== null) { const el = document.getElementById('inputFixedU'); if (el) el.value = u; }
+  if (shgc !== null) { const el = document.getElementById('inputFixedSHGC'); if (el) el.value = shgc; }
+}
+function checkStrip() { show('stripBlock',document.getElementById('inputHasStrip').value==='Yes'); }
+function checkHW()    { const v=document.getElementById('inputHWType').value; show('hwEffBlock',v&&v!=='None'); show('hwCapacityBlock',v==='Tank — electric'||v==='Tank — gas'); }
+function updateOccDefaults() {
+  const occ=document.getElementById('inputOccType').value;
+  const lbl=document.getElementById('lightingCodeMax');
+  if (LIGHTING_MAXES[occ]) { lbl.textContent='Code max: '+LIGHTING_MAXES[occ]; lbl.style.display='inline-block'; } else lbl.style.display='none';
+  const elbl=document.getElementById('equipDefault');
+  if (EQUIP_DEFAULTS[occ]) { elbl.textContent='ASHRAE default: '+EQUIP_DEFAULTS[occ]; elbl.style.display='inline-block'; } else elbl.style.display='none';
+  show('kitchenExhSection',FOOD_SVC.includes(occ));
+}
+function updateEfficiencyLabels() {
+  const sys=document.getElementById('inputSysType').value;
+  if (!sys) { show('efficiencyInputs',false); return; }
+  show('efficiencyInputs',true);
+  document.getElementById('coolEffLabel').textContent='Cooling Efficiency ('+(COOL_METRIC[sys]||'Efficiency')+')';
+  document.getElementById('inputCoolEff').placeholder='Enter '+(COOL_METRIC[sys]||'value');
+  const hasHeat=HAS_HEAT.includes(sys);
+  show('heatEffRow',hasHeat);
+  if (hasHeat) { document.getElementById('heatEffLabel').textContent='Heating Efficiency ('+(HEAT_METRIC[sys]||'Efficiency')+')'; document.getElementById('inputHeatEff').placeholder='Enter '+(HEAT_METRIC[sys]||'value'); }
+}
+function toggleTerms(id) {
+  termsChecked[id]=!termsChecked[id];
+  const box=document.getElementById(id);
+  box.classList.toggle('checked',termsChecked[id]);
+  box.textContent=termsChecked[id]?'✓':' ';
+  updateSignButton();
+}
+function updateSignButton() { document.getElementById('signButton').disabled=!Object.values(termsChecked).every(Boolean); }
+function collectAnswers() {
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():''};
+  return {
+    projectId, services:[svcLC?'Load Calculations (ASHRAE CLTD)':'', svcEC?'Energy Code Compliance':'', svcHD?'HVAC/Mechanical Design':''].filter(Boolean).join(' + '),
+    buildingStatus:g('inputStatus'),approxArea:g('inputArea'),occupants:g('inputOccupants'),
+    orientation:g('inputOrientation'),hoursOperation:g('inputHours'),
+    designTemp:g('inputDesignTemp'),designRH:g('inputDesignRH'),
+    roofDeckType:g('inputDeckType'),roofCovering:g('inputRoofCover'),
+    roofInsulPosition:g('inputInsulPosition'),roofColor:g('inputRoofColor'),
+    roofRValue:g('inputRoofR'),roofSuspCeil:g('inputSuspCeil'),atticCondition:g('inputAtticCond'),
+    ceilingHeight:g('inputCeilHeight'),wallFinish:g('inputWallFinish'),
+    wallConstruction:g('inputWallConst'),wallColor:g('inputWallColor'),
+    wallRValue:g('inputWallR'),wallHeight:g('inputWallHeight'),
+    partConstruction:g('inputPartConst'),partRValue:g('inputPartR'),
+    floorType:g('inputFloorType'),floorRValue:g('inputFloorR'),
+    glassMode:g('inputGlassMode'),glassFixedU:g('inputFixedU'),glassFixedSHGC:g('inputFixedSHGC'),
+    glassOperU:g('inputOperU'),glassOperSHGC:g('inputOperSHGC'),doorType:g('inputDoorType'),
+    occupancyType:g('inputOccType'),lightingWpf:g('inputLightW'),equipWpf:g('inputEquipW'),
+    heatGenEquip:g('inputHeatEquip'),kitchenExhCFM:g('inputKitchenExh'),makeupAirCFM:g('inputMakeupAir'),
+    infiltration:g('inputInfiltration'),acNewExisting:g('inputACNew'),acMounting:g('inputACMount'),
+    systemType:g('inputSysType'),coolingEff:g('inputCoolEff'),heatingEff:g('inputHeatEff'),
+    heatStripCOP:g('inputStripCOP'),hwType:g('inputHWType'),hwEfficiency:g('inputHWEff'),hwCapacityGal:g('inputHWCapacity'),
+    projectNotes:g('inputNotes'),signedDate:new Date().toISOString(),
+  };
+}
+function _editedText(id) {
+  const el = document.getElementById(id);
+  if (!el) return '';
+  const t = (el.textContent || '').trim();
+  return (t === '—' || t === '—') ? '' : t;
+}
+function _stripMoney(s) { return String(s||'').replace(/[\$,\s]/g,''); }
+function _stripSF(s) { return String(s||'').replace(/\s*SF\s*$/i,'').trim(); }
+function _parseContact(s) {
+  const out = { clientEmail: '', clientPhone: '' };
+  String(s||'').split(/[·,|]/).forEach(p => {
+    const t = p.trim();
+    if (!t) return;
+    if (t.includes('@')) out.clientEmail = t;
+    else if (/\d/.test(t)) out.clientPhone = t;
+  });
+  return out;
+}
+function _parseClient(s) {
+  const parts = String(s||'').split(/·/).map(p => p.trim()).filter(Boolean);
+  return { clientName: parts[0] || '', clientCompany: parts[1] || '' };
+}
+function _deliverablesText() {
+  const ul = document.getElementById('deliverablesList');
+  if (!ul) return '';
+  return Array.from(ul.querySelectorAll('li')).map(li => li.textContent.trim()).filter(Boolean).join('\n');
+}
+
+function collectAdminFields() {
+  const g = id => { const el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+  const contact = _parseContact(_editedText('proposalContact'));
+  const client  = _parseClient(_editedText('proposalClient'));
+  return {
+    jobNo:               jobNoGlobal,
+    title:               _editedText('projectName'),
+    projectAddress:      (document.getElementById('projectAddress')||{}).textContent || '',
+    clientName:          client.clientName,
+    clientEmail:         contact.clientEmail,
+    clientPhone:         contact.clientPhone,
+    propertyOwner:       _editedText('proposalOwner'),
+    productService:      _editedText('proposalService'),
+    sf:                  _stripSF(_editedText('proposalArea')) || g('inputArea'),
+    totalCost:           _stripMoney(_editedText('feeAmount')),
+    engagementDays:      _editedText('inputEngagementDays'),
+    deliverablesOverride:_deliverablesText(),
+
+    buildingStatus:      g('inputStatus'),
+    occupants:           g('inputOccupants'),
+    orientation:         g('inputOrientation'),
+    indoorTemp:          g('inputDesignTemp'),
+    indoorRH:            g('inputDesignRH'),
+    deckType:            g('inputDeckType'),
+    roofCover:           g('inputRoofCover'),
+    insulPosition:       g('inputInsulPosition'),
+    roofColor:           g('inputRoofColor'),
+    roofRValue:          g('inputRoofR'),
+    suspCeiling:         g('inputSuspCeil'),
+    atticCond:           g('inputAtticCond'),
+    ceilingHeight:       g('inputCeilHeight'),
+    wallFinish:          g('inputWallFinish'),
+    wallConstruction:    g('inputWallConst'),
+    wallColor:           g('inputWallColor'),
+    wallRValue:          g('inputWallR'),
+    wallHeight:          g('inputWallHeight'),
+    partConstruction:    g('inputPartConst'),
+    partRValue:          g('inputPartR'),
+    floorType:           g('inputFloorType'),
+    floorRValue:         g('inputFloorR'),
+    glassU:              g('inputFixedU'),
+    glassSHGC:           g('inputFixedSHGC'),
+    doorType:            g('inputDoorType'),
+    occupancyType:       g('inputOccType'),
+    insurance:           g('inputInsurance'),
+    lightingWattsPerSF:  g('inputLightW'),
+    equipWattsPerSF:     g('inputEquipW'),
+    heatGenEquipment:    g('inputHeatEquip'),
+    infiltration:        g('inputInfiltration'),
+    acNewExisting:       g('inputACNew'),
+    acMounting:          g('inputACMount'),
+    hvacType:            g('inputHvacType'),
+    heatType:            g('inputHeatType'),
+    systemType:          g('inputSysType'),
+    coolingEff:          g('inputCoolEff'),
+    heatingEff:          g('inputHeatEff'),
+    hwType:              g('inputHWType'),
+    hwEfficiency:        g('inputHWEff'),
+    hwCapacityGal:       g('inputHWCapacity'),
+    description:         g('inputNotes'),
+  };
+}
+
+function handleAdminApprove(mode) {
+  const btns = document.querySelectorAll('.btn-admin');
+  btns.forEach(b => b.disabled = true);
+  const status = document.getElementById('adminStatus');
+  if (status) status.textContent = (mode === 'proposal' ? 'Drafting proposal email…' : 'Drafting questions email…');
+  const fields = collectAdminFields();
+  if (window.parent !== window) {
+    window.parent.postMessage({type:'ADMIN_APPROVED', mode, projectId, jobNo: jobNoGlobal, fields}, '*');
+  }
+}
+
+async function handleSubmit() {
+  const btn=document.getElementById('signButton');
+  btn.disabled=true; btn.textContent='Submitting…';
+  const answers=collectAnswers();
+  try {
+    await fetch(APPS_SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clientSigned',...answers})});
+    if (window.parent!==window) window.parent.postMessage({type:'PORTAL_SIGNED',projectId,answers},'*');
+    showSuccess();
+  } catch(err) {
+    btn.disabled=false; btn.textContent='Sign & Submit →';
+    alert('Something went wrong. Please try again or reply to your proposal email.');
+  }
+}
+function showSuccess() {
+  document.getElementById('main-content').style.display='none';
+  document.getElementById('successState').style.display='block';
+  document.getElementById('statusBadge').textContent='✓ Signed — Current Work';
+  document.getElementById('statusBadge').className='status-badge signed';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function getProjectState() {
+  const addr = (document.getElementById('projectAddress') &&
+                document.getElementById('projectAddress').textContent) || '';
+  const m = addr.match(/,\s*([A-Z]{2})\s+\d{5}/);
+  return m ? m[1] : '';
+}
+function isLicensedState(stateCode) {
+  if (!stateCode || !licensedStatesData.length) return false;
+  const rec = licensedStatesData.find(r => r.stateCode === stateCode);
+  return rec ? !!rec.active : false;
+}
+function getEngagementDays() {
+  const state = getProjectState();
+  const adminDays = parseInt(document.getElementById('inputEngagementDays').textContent) || 0;
+  if (adminDays > 0) return adminDays;
+  return isLicensedState(state) ? 15 : 45;
+}
+function updateStatuteText() {
+  const state     = getProjectState();
+  const statBlock = document.getElementById('statuteBlock');
+  if (!statBlock) return;
+  if (state === 'FL') {
+    statBlock.innerHTML = '<strong>4. PURSUANT TO FLORIDA STATUTE &sect; 558.035, AN INDIVIDUAL EMPLOYEE OR AGENT OF ADICOT, INC. MAY NOT BE HELD INDIVIDUALLY LIABLE FOR DAMAGES RESULTING FROM NEGLIGENCE OCCURRING WITHIN THE COURSE AND SCOPE OF PROFESSIONAL SERVICES RENDERED UNDER THIS PROFESSIONAL SERVICES CONTRACT.</strong>';
+  } else {
+    statBlock.innerHTML = "<strong>4. LIMITATION OF LIABILITY — To the fullest extent permitted by law, the total liability, in the aggregate, of ADICOT, INC and its officers, directors, employees, agents, and consultants, for any and all injuries, claims, losses, expenses, or damages whatsoever arising out of or in any way related to ADICOT, INC’s professional services shall not exceed the total compensation received by ADICOT, INC under this Agreement, or the total amount of $5,000, whichever is greater. Neither party shall be liable for any incidental, indirect, or consequential damages.</strong>";
+  }
+}
+function getServiceCode(svcKey, occupancyType) {
+  const occ = (occupancyType || '').toLowerCase();
+  const isRes = occ.includes('residential') || occ.includes('multifamily') || occ.includes('sfr');
+  if (svcKey === 'lc') return isRes ? 'cooling_load_residential' : 'cooling_load_commercial';
+  if (svcKey === 'ec') return isRes ? 'energy_compliance_residential' : 'energy_compliance_commercial';
+  if (svcKey === 'hd') {
+    if (occ.includes('multifamily') || occ.includes('apartment')) return 'mech_design_multifamily';
+    if (occ.includes('restaurant') || occ.includes('dining') || occ.includes('food')) return 'mech_design_restaurant';
+    if (occ.includes('retail') || occ.includes('tenant')) return 'mech_design_retail';
+    if (occ.includes('sfr') || (occ.includes('residential') && !occ.includes('multi'))) return 'mech_design_sfr_custom';
+    if (occ.includes('industrial') || occ.includes('utility') || occ.includes('warehouse')) return 'mech_design_specialty';
+    return 'mech_design_office_medical';
+  }
+  return null;
+}
+function calculateFee() {
+  if (window._totalCostSet) return;
+  ['lc','ec','hd'].forEach(k => { const el = document.getElementById('fee-'+k); if (el) el.textContent = ''; });
+  if (!servicePricingData.length) return;
+  const sf  = parseFloat((document.getElementById('inputArea').value || '').replace(/,/g,'')) || 0;
+  const occ = document.getElementById('inputOccType').value;
+  const selected = [svcLC?'lc':null, svcEC?'ec':null, svcHD?'hd':null].filter(Boolean);
+  if (!selected.length) return;
+  let totalFee = 0;
+  let hasCustom = [];
+  const feesByKey = {};
+  selected.forEach(key => {
+    const code = getServiceCode(key, occ);
+    if (!code) return;
+    const rec = servicePricingData.find(r => r.serviceCode === code);
+    if (!rec) return;
+    if (rec.pricingType === 'custom') {
+      hasCustom.push(rec.serviceName);
+      feesByKey[key] = 'custom';
+      return;
+    }
+    const calc = (rec.baseFee || 0) + (rec.perSfRate || 0) * sf;
+    const fee  = Math.max(calc, rec.minimumFee || 0);
+    totalFee  += fee;
+    feesByKey[key] = fee;
+  });
+  const projState = getProjectState();
+  if (projState && !isLicensedState(projState) && totalFee > 0) totalFee += 450;
+  if (svcHD) {
+    const hdFee = typeof feesByKey['hd'] === 'number' ? feesByKey['hd'] : 0;
+    const lcFee = typeof feesByKey['lc'] === 'number' ? feesByKey['lc'] : 0;
+    const ecFee = typeof feesByKey['ec'] === 'number' ? feesByKey['ec'] : 0;
+    const bundled = hdFee + (svcLC ? lcFee : 0) + (svcEC ? ecFee : 0);
+    const hdEl = document.getElementById('fee-hd');
+    if (hdEl) hdEl.textContent = feesByKey['hd'] === 'custom' ? 'Custom' : bundled > 0 ? '$' + Math.round(bundled).toLocaleString() : '';
+  } else {
+    ['lc','ec'].forEach(key => {
+      const el = document.getElementById('fee-'+key);
+      if (!el || !feesByKey[key]) return;
+      el.textContent = feesByKey[key] === 'custom' ? 'Custom' : '$' + Math.round(feesByKey[key]).toLocaleString();
+    });
+  }
+  if (hasCustom.length && totalFee === 0) {
+    document.getElementById('feeAmount').textContent   = 'Custom quote';
+    document.getElementById('feeDelivery').textContent = 'Contact for pricing';
+  } else if (totalFee > 0) {
+    const label = '$' + Math.round(totalFee).toLocaleString() + (hasCustom.length ? ' + custom' : '');
+    const display = sf ? label : 'Est. ' + label + '*';
+    document.getElementById('feeAmount').textContent   = display;
+    document.getElementById('feeDelivery').textContent = '$' + Math.round(totalFee).toLocaleString();
+    if (!sf) {
+      let note = document.getElementById('feeCalcNote');
+      if (!note) {
+        note = document.createElement('div');
+        note.id = 'feeCalcNote';
+        note.style.cssText = 'font-size:11px;color:#9A9A9A;margin-top:6px';
+        note.textContent = '* Based on minimums — estimate updates when area is entered';
+        document.getElementById('feeAmount').after(note);
+      }
+    }
+  }
+}
+function show(id,visible) { const el=document.getElementById(id); if(el) el.style.display=visible?'block':'none'; }
+</script>
+<script>
+function notifyHeight() {
+  window.parent.postMessage({type:'IFRAME_HEIGHT',height:document.documentElement.scrollHeight},'*');
+}
+if (window.ResizeObserver) { const ro=new ResizeObserver(()=>notifyHeight()); ro.observe(document.body); }
+window.addEventListener('load',notifyHeight);
+window.addEventListener('beforeprint',function(){
+  document.querySelectorAll('textarea.field-input').forEach(function(ta){
+    ta.style.height='auto';
+    ta.style.height=ta.scrollHeight+'px';
+    ta.style.overflow='visible';
+  });
+});
+</script>
+</body>
+</html>
