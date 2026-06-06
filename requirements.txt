@@ -11,3 +11,4 @@ google-auth>=2.0
 python-docx
 pandas
 numpy
+pymupdf>=1.24
