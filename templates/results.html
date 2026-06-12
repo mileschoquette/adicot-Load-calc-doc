@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "_tabs.html" %}
+
+<h2>{{ meta.project_name or "(unknown project)" }}</h2>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    {% for m in messages %}
+      <div class="flash flash-info">{{ m }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+{# ── Wix validation pointer (full results live on the Quality Check tab) ── #}
+{% if meta.mismatches %}
+  <div class="wix-mismatch-banner">
+    <strong>⚠ Wix validation: {{ meta.mismatches|length }} mismatch{% if meta.mismatches|length != 1 %}es{% endif %}</strong>
+    — see the <a href="{{ url_for('job_quality', job_id=job_id) }}">Quality Check</a> tab for details.
+  </div>
+{% endif %}
+
+{# ── Preview pane ───────────────────────────────────────────────────── #}
+{% if meta.preview %}
+  <h3>Preview</h3>
+  <pre class="preview-pane">{{ meta.preview }}</pre>
+{% endif %}
+
+{# ── PDF deliverables ───────────────────────────────────────────────── #}
+<h3>PDF Deliverables</h3>
+
+{% if meta.html_from_drive %}
+  <form method="post" action="{{ url_for('rescrape_html', job_id=job_id) }}"
+        style="margin-bottom:1rem;"
+        onsubmit="return confirm('Re-fetch the HTML from Google Drive and re-parse this job? Regenerate the PDFs afterward to apply the changes.')">
+    <button type="submit" class="btn-secondary">↻ Re-scrape HTML from Drive</button>
+    <span class="muted">Pulls the latest <code>{{ meta.html_name or 'dm_hvac-loads1.html' }}</code> from Drive and re-parses. Regenerate PDFs after.</span>
+  </form>
+{% endif %}
+
+{% if pdfs %}
+  <p class="muted">Generated. Click any file to download.</p>
+  <ul class="pdf-list">
+    {% for pdf in pdfs %}
+      <li>
+        <a href="{{ url_for('download_file', job_id=job_id, filename=pdf.name) }}">{{ pdf.name }}</a>
+        <span class="muted">({{ pdf.size_kb }} KB)</span>
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if drive_push %}
+    {% if drive_push.status == "success" %}
+      <div class="drive-banner drive-banner-ok">
+        <strong>✓ Uploaded to Google Drive</strong> —
+        <a href="{{ drive_push.folder_url }}" target="_blank" rel="noopener">
+          open 1-job/{{ drive_push.job_no.split("-", 1)[0] }}/{{ drive_push.job_no }}/6-Submit
+        </a>
+        {% if drive_push.uploaded %}
+          <ul class="drive-uploaded">
+            {% for u in drive_push.uploaded %}
+              <li>
+                <a href="{{ u.web_link }}" target="_blank" rel="noopener">{{ u.name }}</a>
+                {% if u.overwritten %}<span class="muted">(overwrote existing)</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% elif drive_push.status == "partial" %}
+      <div class="drive-banner drive-banner-warn">
+        <strong>⚠ Drive upload partially succeeded</strong>
+        {% if drive_push.folder_url %} — <a href="{{ drive_push.folder_url }}" target="_blank" rel="noopener">open folder</a>{% endif %}
+        <ul>
+          {% for u in drive_push.uploaded %}<li>✓ {{ u.name }}{% if u.overwritten %} <span class="muted">(overwrote)</span>{% endif %}</li>{% endfor %}
+          {% for e in drive_push.errors %}<li>✗ {{ e.name or "(unknown)" }} — {{ e.message }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% elif drive_push.status == "error" %}
+      <div class="drive-banner drive-banner-error">
+        <strong>✗ Drive upload failed</strong>
+        {% if drive_push.reason %}<div>{{ drive_push.reason }}</div>{% endif %}
+        <p class="muted">Download from the links above and upload manually.</p>
+      </div>
+    {% elif drive_push.status == "skipped" %}
+      <div class="drive-banner drive-banner-info">
+        <strong>Drive upload skipped</strong>{% if drive_push.reason %} — {{ drive_push.reason }}{% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}" style="margin-top:1rem;">
+    <button type="submit" class="btn-secondary">Regenerate PDFs</button>
+    <span class="muted">Overwrites existing files{% if wix_job_no %} and re-pushes to Drive{% endif %}.</span>
+  </form>
+
+{% else %}
+  <p class="muted">
+    Not generated yet. Review the preview above, adjust settings below if needed, then generate.
+    {% if wix_job_no %}
+      PDFs will also be pushed to
+      <code>1-job/{{ wix_job_no.split("-", 1)[0] }}/{{ wix_job_no }}/6-Submit/</code> on Google Drive.
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}">
+    <button type="submit" class="btn-primary">Generate PDFs</button>
+  </form>
+{% endif %}
+
+{# ── Project settings (moved from upload form) ──────────────────────── #}
+<h3 style="margin-top:2rem;">Project settings</h3>
+<p class="muted">Adjust these after parsing if needed, then click Commit &amp; regenerate to update the PDFs.</p>
+
+<form method="post" action="{{ url_for('commit_settings', job_id=job_id) }}" class="job-form">
+
+  <section>
+    <h4 style="margin-top:0;">Exhaust</h4>
+    <div class="field" style="max-width:280px;">
+      <label for="toilet_exhaust_cfm">Toilet exhaust per fixture (CFM)</label>
+      <input type="number" name="toilet_exhaust_cfm" id="toilet_exhaust_cfm"
+             value="{{ meta.config.toilet_exhaust_cfm or 70 }}" min="0" step="1">
+      <small>FL = 70 typical. Used for spaces tagged with the TOILET exhaust rule.</small>
+    </div>
+    <div class="field-row">
+      <label class="checkbox">
+        <input type="checkbox" name="bldg_exhaust_all_toilet" id="bldg_exhaust_all_toilet"
+               {{ 'checked' if meta.config.bldg_exhaust_all_toilet }}>
+        <span>All building exhaust is intermittent toilet/accessory exhaust</span>
+      </label>
+      <small>When checked: Bldg Exhaust column zeros out on the Air Balance and the IMC 403.4.2 footnote is added.</small>
+    </div>
+  </section>
+
+  <section>
+    <h4 style="margin-top:0;">Zone overrides <span class="optional">(optional)</span></h4>
+    <p class="muted">Leave blank to use zone names and tonnage from Design Master. Override to rename, force a different equipment size, override supply CFM, or merge two HTML zones into one deliverable row.</p>
+    <div id="overrides-list">
+      {# Re-populate any saved overrides #}
+      {% for i, ov in saved_overrides %}
+        <div class="override-row">
+          <div class="field">
+            <label>HTML zone name <small>(match)</small></label>
+            <input type="text" name="ov_match_{{ i }}" value="{{ ov.match or '' }}" placeholder="Zone Left Clinic North">
+          </div>
+          <div class="field">
+            <label>Display name</label>
+            <input type="text" name="ov_display_{{ i }}" value="{{ ov.display or '' }}" placeholder="Zone RTU-2: SURGERY/TREAT/HYG">
+          </div>
+          <div class="grid-3">
+            <div class="field">
+              <label>Tons</label>
+              <input type="number" name="ov_tons_{{ i }}" step="0.5" value="{{ ov.tons or '' }}" placeholder="3.5">
+            </div>
+            <div class="field">
+              <label>Supply CFM</label>
+              <input type="number" name="ov_supply_{{ i }}" step="50" value="{{ ov.supply_cfm or '' }}" placeholder="1400">
+            </div>
+            <div class="field">
+              <label>Merge into</label>
+              <input type="text" name="ov_merge_{{ i }}" value="{{ ov.merge_with or '' }}" placeholder="Zone Left Clinic North">
+            </div>
+          </div>
+          <button type="button" class="remove-override">Remove</button>
+        </div>
+      {% endfor %}
+    </div>
+    <button type="button" id="add-override-btn">+ Add zone override</button>
+    <small class="muted">Tip: leave <em>Match</em> blank to ignore a row.</small>
+  </section>
+
+  <div class="submit-row">
+    <button type="submit" class="primary">Commit &amp; regenerate PDFs</button>
+  </div>
+</form>
+
+{# ── Settings summary ───────────────────────────────────────────────── #}
+<h3 style="margin-top:2rem;">Settings used</h3>
+<table class="settings">
+  <tbody>
+    <tr><th>Project address</th><td>{{ meta.project_address or meta.config.project_address or "—" }}</td></tr>
+    <tr>
+      <th>Engineer</th>
+      <td>{{ meta.engineer.name }}{% if meta.engineer.email %} &lt;{{ meta.engineer.email }}&gt;{% endif %}</td>
+    </tr>
+    <tr><th>Toilet exhaust CFM</th><td>{{ meta.config.toilet_exhaust_cfm or "—" }}</td></tr>
+    <tr><th>Bldg exhaust = all toilet</th><td>{{ "Yes" if meta.config.bldg_exhaust_all_toilet else "No" }}</td></tr>
+    {% if meta.wix_item_id %}
+      <tr><th>Wix project</th><td><code>{{ meta.wix_item_id }}</code></td></tr>
+    {% endif %}
+    {% if meta.html_name %}
+      <tr><th>Source HTML</th><td><code>{{ meta.html_name }}</code></td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<p class="actions" style="margin-top:2rem;">
+  <a href="{{ url_for('index') }}">← Run another job</a>
+</p>
+
+<template id="override-row-template">
+  <div class="override-row">
+    <div class="field">
+      <label>HTML zone name <small>(match)</small></label>
+      <input type="text" name="ov_match_INDEX" placeholder="Zone Left Clinic North">
+    </div>
+    <div class="field">
+      <label>Display name</label>
+      <input type="text" name="ov_display_INDEX" placeholder="Zone RTU-2: SURGERY/TREAT/HYG">
+    </div>
+    <div class="grid-3">
+      <div class="field">
+        <label>Tons</label>
+        <input type="number" name="ov_tons_INDEX" step="0.5" placeholder="3.5">
+      </div>
+      <div class="field">
+        <label>Supply CFM</label>
+        <input type="number" name="ov_supply_INDEX" step="50" placeholder="1400">
+      </div>
+      <div class="field">
+        <label>Merge into</label>
+        <input type="text" name="ov_merge_INDEX" placeholder="Zone Left Clinic North">
+      </div>
+    </div>
+    <button type="button" class="remove-override">Remove</button>
+  </div>
+</template>
+
+<script>
+(function() {
+  const list   = document.getElementById('overrides-list');
+  const tpl    = document.getElementById('override-row-template');
+  const addBtn = document.getElementById('add-override-btn');
+  // Start counter above any pre-populated rows to avoid name collisions
+  let counter  = {{ saved_overrides|length }};
+
+  function addRow() {
+    const clone = tpl.content.cloneNode(true);
+    const html  = clone.firstElementChild.outerHTML.replace(/INDEX/g, counter);
+    list.insertAdjacentHTML('beforeend', html);
+    counter += 1;
+  }
+
+  addBtn.addEventListener('click', addRow);
+  list.addEventListener('click', (e) => {
+    if (e.target.classList.contains('remove-override')) {
+      e.target.closest('.override-row').remove();
+    }
+  });
+})();
+</script>
+
+{% endblock %}
