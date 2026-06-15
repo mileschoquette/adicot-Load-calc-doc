@@ -1,4 +1,3 @@
-/* Adicot HVAC Pipeline — engineer-friendly UI */
 
 :root {
   --bg: #fafaf9;
@@ -298,6 +297,42 @@ footer {
   font-size: 0.85rem;
   text-align: center;
 }
+
+/* ── Landing / list pages ── */
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.page-head h2 { margin-bottom: 0; }
+
+.cms-filter {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  margin: 0.75rem 0 1rem;
+  font-family: inherit;
+}
+.cms-filter:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+.cms-jobs td a { text-decoration: none; color: var(--accent); font-weight: 500; }
+.cms-jobs td a:hover { text-decoration: underline; }
+
+.badge-ok {
+  background: var(--success);
+}
+
+/* ── Work order table ── */
+.wo-table th { width: 200px; }
+.wo-table td { font-variant-numeric: tabular-nums; }
 
 .tab-strip {
   display: flex;
