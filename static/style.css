@@ -1,3 +1,4 @@
+/* Adicot HVAC Pipeline — engineer-friendly UI */
 
 :root {
   --bg: #fafaf9;
@@ -331,8 +332,17 @@ footer {
 }
 
 /* ── Work order table ── */
-.wo-table th { width: 200px; }
+.wo-table { margin-bottom: 1.25rem; }
+.wo-table th { width: 220px; }
 .wo-table td { font-variant-numeric: tabular-nums; }
+.wo-section {
+  margin: 1.5rem 0 0.4rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
 
 .tab-strip {
   display: flex;
