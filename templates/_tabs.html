@@ -1,0 +1,34 @@
+{# ─────────────────────────────────────────────────────────
+   Tab strip — included at the top of every job page.
+   Pass `active_tab` ("star"|"pdfs"|"duct"|"charts"|"spec"|"equip"|"quality")
+   and `job_id`. `parsed` gates the six work tabs; it defaults to True for the
+   work-tab pages (which only render after a parse) and is set explicitly on
+   the star page.
+   ───────────────────────────────────────────────────────── #}
+{% set parsed = parsed if parsed is defined else True %}
+<nav class="tab-strip" aria-label="Job tabs">
+  <a class="tab {% if active_tab == 'star' %}active{% endif %}"
+     href="{{ url_for('job_star', job_id=job_id) }}">★ W/O</a>
+  {% if parsed %}
+    <a class="tab {% if active_tab == 'pdfs' %}active{% endif %}"
+       href="{{ url_for('results', job_id=job_id) }}">PDF</a>
+    <a class="tab {% if active_tab == 'duct' %}active{% endif %}"
+       href="{{ url_for('job_duct', job_id=job_id) }}">Duct Sizing</a>
+    <a class="tab {% if active_tab == 'charts' %}active{% endif %}"
+       href="{{ url_for('job_charts', job_id=job_id) }}">Charts</a>
+    <a class="tab {% if active_tab == 'spec' %}active{% endif %}"
+       href="{{ url_for('job_spec', job_id=job_id) }}">Specs</a>
+    <a class="tab {% if active_tab == 'equip' %}active{% endif %}"
+       href="{{ url_for('job_equip', job_id=job_id) }}">Equipment</a>
+    <a class="tab {% if active_tab == 'quality' %}active{% endif %}"
+       href="{{ url_for('job_quality', job_id=job_id) }}">Quality Check</a>
+  {% else %}
+    <span class="tab disabled" title="Parse the job to enable">PDF</span>
+    <span class="tab disabled" title="Parse the job to enable">Duct Sizing</span>
+    <span class="tab disabled" title="Parse the job to enable">Charts</span>
+    <span class="tab disabled" title="Parse the job to enable">Specs</span>
+    <span class="tab disabled" title="Parse the job to enable">Equipment</span>
+    <span class="tab disabled" title="Parse the job to enable">Quality Check</span>
+  {% endif %}
+  <a class="tab tab-right" href="{{ url_for('index') }}">All Jobs</a>
+</nav>

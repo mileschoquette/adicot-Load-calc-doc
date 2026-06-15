@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Temp Jobs — Adicot HVAC Pipeline{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h2>Temp Jobs</h2>
+  <form method="post" action="{{ url_for('new_temp') }}">
+    <button type="submit" class="btn-primary">Run a Temp Job</button>
+  </form>
+</div>
+<p class="muted">One-off runs from an HTML export, not linked to a CMS project.
+  CMS jobs live on the <a href="{{ url_for('index') }}">Jobs in CMS</a> page.</p>
+
+{% if entries %}
+  <table class="jobs">
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Address</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+        <tr>
+          <td><a href="{{ url_for('job_star', job_id=e.job_id) }}">{{ e.project_name }}</a></td>
+          <td class="muted">{{ e.address }}</td>
+          <td class="muted">{{ e.mtime }}</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_job', job_id=e.job_id) }}"
+                  style="display:inline" onsubmit="return confirm('Delete this job?')">
+              <button type="submit" class="danger-link">delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="muted">No temp jobs yet. Click <strong>Run a Temp Job</strong> to start one.</p>
+{% endif %}
+
+{% endblock %}

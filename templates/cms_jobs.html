@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Jobs — Adicot HVAC Pipeline{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h2>Jobs in CMS</h2>
+  <form method="post" action="{{ url_for('new_temp') }}">
+    <button type="submit" class="btn-primary">Run a Temp Job</button>
+  </form>
+</div>
+<p class="muted">Click a project to open its work order, or run a one-off temp job from a Design Master HTML export.</p>
+
+{% if projects %}
+  <input type="text" id="cms-filter" class="cms-filter"
+         placeholder="Filter by address, job no, or title…" autocomplete="off">
+  <table class="jobs cms-jobs">
+    <thead>
+      <tr><th>Job No</th><th>Address / Title</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+        <tr class="cms-row"
+            data-search="{{ (p.job_no ~ ' ' ~ p.address ~ ' ' ~ p.title)|lower }}">
+          <td>
+            <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.job_no or "—" }}</a>
+          </td>
+          <td>
+            <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.address or p.title or "(untitled)" }}</a>
+            {% if p.address and p.title %}<div class="muted small">{{ p.title }}</div>{% endif %}
+          </td>
+          <td>
+            {% if p.parsed %}
+              <span class="badge badge-ok">Parsed</span>
+            {% else %}
+              <span class="muted small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small" id="cms-empty" hidden>No projects match your filter.</p>
+{% else %}
+  <p class="muted">No CMS projects available (Wix is unreachable or credentials aren't set).
+    Use <strong>Run a Temp Job</strong> to process an HTML export directly.</p>
+{% endif %}
+
+<script>
+(function () {
+  const f = document.getElementById('cms-filter');
+  if (!f) return;
+  const rows  = Array.from(document.querySelectorAll('.cms-row'));
+  const empty = document.getElementById('cms-empty');
+  f.addEventListener('input', () => {
+    const q = f.value.trim().toLowerCase();
+    let shown = 0;
+    for (const r of rows) {
+      const match = !q || r.dataset.search.includes(q);
+      r.style.display = match ? '' : 'none';
+      if (match) shown++;
+    }
+    if (empty) empty.hidden = shown !== 0;
+  });
+})();
+</script>
+
+{% endblock %}
