@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HVAC Loads PDF Pipeline{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1><a href="{{ url_for('index') }}">HVAC Loads PDF Pipeline</a></h1>
+      <nav>
+        <a href="{{ url_for('index') }}">Jobs (CMS)</a>
+        <a href="{{ url_for('past_jobs') }}">Temp Jobs</a>
+        <a href="{{ url_for('invoices') }}">Invoices</a>
+        <a href="{{ url_for('quickbooks_admin') }}">QuickBooks</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+        {% for category, msg in msgs %}
+          <div class="flash flash-{{ category }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <div class="container">
+      <small>Adicot, Inc. | Professional Engineering Services ·
+        Support: <a href="mailto:agc@adicot.com">agc@adicot.com</a></small>
+    </div>
+  </footer>
+</body>
+</html>
