@@ -331,6 +331,67 @@ footer {
   background: var(--success);
 }
 
+/* ── Modal (invoice confirm) ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.5rem 1.75rem;
+  width: min(540px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+.modal h3 { margin-top: 0; }
+.modal .field { margin-bottom: 0.75rem; }
+.modal label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+.modal select,
+.modal input,
+.modal textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+  background: #fff;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.modal-error {
+  color: var(--danger);
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+}
+.btn-ghost {
+  background: #fff;
+  border: 1px solid var(--border);
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+.btn-ghost:hover { background: #f4f4f5; }
+.inv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ── Work order table ── */
 .wo-table { margin-bottom: 1.25rem; }
 .wo-table th { width: 220px; }
