@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}QuickBooks — Adicot HVAC Pipeline{% endblock %}
+{% block content %}
+
+<h2>QuickBooks Connection</h2>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    {% for m in messages %}<div class="flash flash-info">{{ m }}</div>{% endfor %}
+  {% endif %}
+{% endwith %}
+
+{% if not status.configured %}
+  <div class="drive-banner drive-banner-error">
+    <strong>Not configured.</strong> Set <code>QBO_CLIENT_ID</code>,
+    <code>QBO_CLIENT_SECRET</code>, and <code>QBO_REDIRECT_URI</code> in the environment,
+    then reload.
+  </div>
+{% elif status.connected %}
+  <div class="wix-ok-banner">
+    <p>✓ Connected{% if company %} to <strong>{{ company.CompanyName }}</strong>{% endif %}
+      ({{ status.environment }}).</p>
+  </div>
+  <table class="settings">
+    <tbody>
+      <tr><th>Environment</th><td>{{ status.environment }}</td></tr>
+      <tr><th>Company (realm) id</th><td><code>{{ status.realm_id }}</code></td></tr>
+      {% if company %}
+        <tr><th>Company name</th><td>{{ company.CompanyName }}</td></tr>
+        {% if company.LegalName %}<tr><th>Legal name</th><td>{{ company.LegalName }}</td></tr>{% endif %}
+        {% if company.Country %}<tr><th>Country</th><td>{{ company.Country }}</td></tr>{% endif %}
+      {% else %}
+        <tr><th>Verify</th><td class="muted">Connected, but couldn't read company info — check logs.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  <form method="post" action="{{ url_for('quickbooks_disconnect') }}" style="margin-top:1.5rem;"
+        onsubmit="return confirm('Disconnect from QuickBooks? You will need to reconnect to create invoices.')">
+    <button type="submit" class="btn-secondary">Disconnect</button>
+  </form>
+{% else %}
+  <p class="muted">Not connected yet. Click below to authorize this app against your
+    QuickBooks {{ status.environment }} company. You'll be sent to Intuit to approve,
+    then returned here.</p>
+  <p style="margin-top:1rem;">
+    <a class="btn-primary" href="{{ url_for('quickbooks_connect') }}">Connect to QuickBooks</a>
+  </p>
+{% endif %}
+
+{% endblock %}
