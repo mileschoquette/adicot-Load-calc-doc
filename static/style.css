@@ -400,6 +400,18 @@ footer {
   cursor: pointer;
 }
 .pdf-check input { width: auto; }
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  margin-left: 0.6rem;
+  font-family: inherit;
+}
+.link-btn:hover { text-decoration: underline; }
+.link-btn:disabled { color: var(--muted); cursor: not-allowed; text-decoration: none; }
 
 /* ── Work order table ── */
 .wo-table { margin-bottom: 1.25rem; }
