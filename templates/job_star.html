@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.project_address or meta.project_name or "Work Order" }} — Adicot HVAC Pipeline{% endblock %}
+{% block content %}
+{% include "_tabs.html" %}
+{% set eng = meta.engineer or {} %}
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    {% for m in messages %}<div class="flash flash-info">{{ m }}</div>{% endfor %}
+  {% endif %}
+{% endwith %}
+
+{% if source == 'cms' %}
+  <h2>{{ meta.project_address or meta.project_name or "Work Order" }}</h2>
+  <p class="muted">Work order from the Adicot CMS. Parse the Design Master HTML to unlock the rest of the tabs.</p>
+
+  <h3>Work Order</h3>
+  {% for sec in wo_sections %}
+    <h4 class="wo-section">{{ sec.title }}</h4>
+    <table class="settings wo-table">
+      <tbody>
+        {% for row in sec.rows %}
+          <tr>
+            <th>{{ row.label }}</th>
+            <td>
+              {% if row.kind == 'link' and row.value %}
+                <a href="{{ row.value }}" target="_blank" rel="noopener">view</a>
+              {% elif row.value %}
+                {{ row.value }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No CMS data on this project record yet.</p>
+  {% endfor %}
+{% else %}
+  <h2>Temp Job</h2>
+  <p class="muted">A one-off run. Drop in a Design Master HTML export and parse it to unlock the rest of the tabs.</p>
+{% endif %}
+
+{% if parsed %}
+  <div class="wix-ok-banner">
+    <p>✓ Parsed. The PDF, Duct, Charts, Specs, Equipment and Quality tabs are available.
+      Re-parse below to refresh from the latest HTML.</p>
+  </div>
+{% endif %}
+
+<h3>{{ "Re-parse" if parsed else "Parse" }}</h3>
+<form method="post" action="{{ url_for('job_parse', job_id=job_id) }}"
+      enctype="multipart/form-data" class="job-form" id="parse-form">
+
+  {% if source == 'cms' %}
+    <section>
+      <h4 style="margin-top:0;">From Google Drive</h4>
+      <div id="drive-status" class="drive-status">
+        <div id="drive-status-loading"><p class="muted">Checking Google Drive…</p></div>
+        <div id="drive-status-found" hidden>
+          <p class="drive-found">✓ Found <strong id="drive-found-path"></strong>
+            (<span id="drive-found-size"></span>).</p>
+          <p class="muted small">Click Parse to run the pipeline on this file.</p>
+        </div>
+        <div id="drive-status-not-found" hidden>
+          <p class="drive-not-found">⚠ Couldn't find the HTML at the expected path.</p>
+          <p class="muted small">Expected: <code id="drive-not-found-path"></code></p>
+          <p class="muted small">Pick the project's folder in Drive, or upload the file manually below.</p>
+          <button type="button" class="btn-secondary" id="pick-folder-btn">📁 Pick folder in Drive</button>
+        </div>
+        <div id="drive-status-picked" hidden>
+          <p class="drive-found">✓ Using Drive folder <strong id="picked-folder-name"></strong>.
+            <button type="button" class="link-btn" id="clear-folder-btn">change</button></p>
+          <p class="muted small">Parse will look for the HTML in this folder (and its 4-Design subfolder).</p>
+        </div>
+      </div>
+      <input type="hidden" name="use_drive_file" id="use_drive_file" value="">
+      <input type="hidden" name="drive_folder_id" id="drive_folder_id"
+             value="{{ meta.drive_folder_id or '' }}">
+      <input type="hidden" name="drive_folder_name" id="drive_folder_name"
+             value="{{ meta.drive_folder_name or '' }}">
+    </section>
+  {% endif %}
+
+  <section>
+    <h4 style="margin-top:0;">{{ "Or upload manually" if source == 'cms' else "Design Master HTML" }}</h4>
+    <div class="field">
+      <label for="html_file">HTML file</label>
+      <input type="file" name="html_file" id="html_file" accept=".html,.htm">
+      <small>The "Save loads HTML" export from Design Master HVAC.{% if source == 'cms' %} Overrides the Drive file if both are present.{% endif %}</small>
+    </div>
+    {% if source != 'cms' %}
+      <div class="field">
+        <label for="project_address">Project address <span class="optional">(optional)</span></label>
+        <input type="text" name="project_address" id="project_address"
+               value="{{ meta.project_address or '' }}"
+               placeholder="4333 S Tamiami Tr, Sarasota, FL 34231">
+        <small>Used for the state code (codes / spec). Leave blank if unknown.</small>
+      </div>
+    {% endif %}
+  </section>
+
+  <section>
+    <h4 style="margin-top:0;">Engineer (signature block)</h4>
+    <p class="muted">Defaults to Adicot's Florida PE. Override per project if needed.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="engineer_name">Name</label>
+        <input type="text" name="engineer_name" id="engineer_name"
+               value="{{ eng.name or 'Adrienne Gould-Choquette' }}">
+      </div>
+      <div class="field">
+        <label for="engineer_state">State</label>
+        <input type="text" name="engineer_state" id="engineer_state"
+               value="{{ eng.state or 'Florida' }}">
+      </div>
+      <div class="field">
+        <label for="engineer_email">Email</label>
+        <input type="email" name="engineer_email" id="engineer_email"
+               value="{{ eng.email or 'agc@adicot.com' }}">
+      </div>
+      <div class="field">
+        <label for="engineer_phone">Phone</label>
+        <input type="text" name="engineer_phone" id="engineer_phone"
+               value="{{ eng.phone or '(804-787-0468)' }}">
+      </div>
+    </div>
+  </section>
+
+  <div class="submit-row">
+    <button type="submit" class="primary">{{ "Re-parse" if parsed else "Parse" }}</button>
+  </div>
+</form>
+
+{% if source == 'cms' %}
+{# ── Drive folder browser ──────────────────────────────────────────── #}
+<div class="modal-overlay" id="folder-modal">
+  <div class="modal">
+    <h3>Pick the project's Drive folder</h3>
+    <p class="muted small">Choose the project's <strong>job folder</strong> — the one that contains
+      <code>4-Design</code> and <code>6-Submit</code>. (Picking <code>4-Design</code> works too;
+      we'll use its parent.)</p>
+    <p class="muted small" id="folder-breadcrumb"></p>
+    <div class="muted small" id="folder-status"></div>
+    <ul class="folder-list" id="folder-list"></ul>
+    <div class="modal-error" id="folder-error" hidden></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="folder-cancel">Cancel</button>
+      <button type="button" class="btn-primary" id="folder-use">Use this folder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const wixId    = {{ job_id|tojson }};
+  const useDrive = document.getElementById("use_drive_file");
+  const fileIn   = document.getElementById("html_file");
+  const folderId = document.getElementById("drive_folder_id");
+  const folderNm = document.getElementById("drive_folder_name");
+  const sLoad    = document.getElementById("drive-status-loading");
+  const sFound   = document.getElementById("drive-status-found");
+  const sNot     = document.getElementById("drive-status-not-found");
+  const sPicked  = document.getElementById("drive-status-picked");
+  const fPath    = document.getElementById("drive-found-path");
+  const fSize    = document.getElementById("drive-found-size");
+  const nPath    = document.getElementById("drive-not-found-path");
+  const pickedNm = document.getElementById("picked-folder-name");
+
+  function fmt(b) {
+    if (!b) return "0 KB";
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return Math.round(b / 1024) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+  function show(which) {
+    sLoad.hidden   = which !== "loading";
+    sFound.hidden  = which !== "found";
+    sNot.hidden    = which !== "not_found";
+    sPicked.hidden = which !== "picked";
+  }
+  function showPicked(name) {
+    pickedNm.textContent = name || "(selected folder)";
+    useDrive.value = "1";
+    show("picked");
+  }
+
+  async function check() {
+    if (fileIn.files && fileIn.files.length) return;          // manual upload chosen
+    if (folderId.value) { showPicked(folderNm.value); return; } // remembered/just-picked
+    show("loading");
+    try {
+      const r = await fetch("/api/check-drive?wix_item_id=" + encodeURIComponent(wixId));
+      const d = await r.json();
+      if (d.status === "found") {
+        fPath.textContent = d.path; fSize.textContent = fmt(d.size_bytes);
+        show("found"); useDrive.value = "1";
+      } else {
+        nPath.textContent = d.expected_path || d.message || "(unknown)";
+        show("not_found"); useDrive.value = "";
+      }
+    } catch (e) {
+      nPath.textContent = "(Drive check failed — upload manually)";
+      show("not_found"); useDrive.value = "";
+    }
+  }
+
+  fileIn.addEventListener("change", () => {
+    if (fileIn.files && fileIn.files.length) { useDrive.value = ""; } else { check(); }
+  });
+
+  // ── Folder browser ──
+  const modal     = document.getElementById("folder-modal");
+  const fList      = document.getElementById("folder-list");
+  const fCrumb     = document.getElementById("folder-breadcrumb");
+  const fStatus    = document.getElementById("folder-status");
+  const fErr       = document.getElementById("folder-error");
+  const pickBtn    = document.getElementById("pick-folder-btn");
+  const clearBtn   = document.getElementById("clear-folder-btn");
+  const useBtn     = document.getElementById("folder-use");
+  const cancelBtn  = document.getElementById("folder-cancel");
+  let stack = [];   // breadcrumb path of {id, name}
+
+  function renderCrumb() {
+    fCrumb.innerHTML = "";
+    stack.forEach((node, i) => {
+      const a = document.createElement("a");
+      a.href = "#"; a.textContent = node.name;
+      a.addEventListener("click", (e) => { e.preventDefault(); stack = stack.slice(0, i + 1); loadCurrent(); });
+      fCrumb.appendChild(a);
+      if (i < stack.length - 1) fCrumb.appendChild(document.createTextNode("  /  "));
+    });
+  }
+
+  async function loadCurrent() {
+    fErr.hidden = true; fList.innerHTML = ""; fStatus.textContent = "Loading…";
+    const cur = stack.length ? stack[stack.length - 1] : null;
+    try {
+      const url = "/api/drive/folders" + (cur ? ("?parent=" + encodeURIComponent(cur.id)) : "");
+      const r = await fetch(url); const d = await r.json();
+      if (!d.ok) { fErr.textContent = d.error || "Couldn't list folders."; fErr.hidden = false; fStatus.textContent = ""; return; }
+      if (!stack.length) stack = [{ id: d.parent_id, name: "1-job" }];
+      renderCrumb();
+      fStatus.textContent = d.has_html
+        ? "✓ An HTML file is in this folder — you can use it."
+        : "Open a subfolder, or use this folder.";
+      fList.innerHTML = "";
+      (d.folders || []).forEach(f => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = "#"; a.textContent = "📁 " + f.name;
+        a.addEventListener("click", (e) => { e.preventDefault(); stack.push({ id: f.id, name: f.name }); loadCurrent(); });
+        li.appendChild(a); fList.appendChild(li);
+      });
+      if (!(d.folders || []).length) {
+        const li = document.createElement("li"); li.className = "muted small";
+        li.textContent = "(no subfolders)"; fList.appendChild(li);
+      }
+    } catch (e) {
+      fErr.textContent = "Network error listing folders."; fErr.hidden = false; fStatus.textContent = "";
+    }
+  }
+
+  if (pickBtn) pickBtn.addEventListener("click", () => { stack = []; modal.classList.add("open"); loadCurrent(); });
+  if (cancelBtn) cancelBtn.addEventListener("click", () => modal.classList.remove("open"));
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("open"); });
+  if (clearBtn) clearBtn.addEventListener("click", () => {
+    folderId.value = ""; folderNm.value = ""; useDrive.value = ""; check();
+  });
+  useBtn.addEventListener("click", () => {
+    const cur = stack.length ? stack[stack.length - 1] : null;
+    if (!cur || !cur.id) return;
+    folderId.value = cur.id; folderNm.value = cur.name;
+    modal.classList.remove("open");
+    showPicked(cur.name);
+  });
+
+  check();
+})();
+</script>
+{% endif %}
+
+{% endblock %}
