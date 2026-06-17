@@ -391,6 +391,15 @@ footer {
 }
 .btn-ghost:hover { background: #f4f4f5; }
 .inv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pdf-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  padding: 0.2rem 0;
+  cursor: pointer;
+}
+.pdf-check input { width: auto; }
 
 /* ── Work order table ── */
 .wo-table { margin-bottom: 1.25rem; }
