@@ -79,6 +79,7 @@ import pdf_crop
 import pdf_combine
 import html_pdf
 import room_qc
+import roof_check
 import quickbooks_client as qbo
 
 # ── Equipment selector (optional — graceful fallback if files not present) ──
@@ -1034,6 +1035,8 @@ def job_quality(job_id: str):
         "unverified":         [f for f in flagged if f["status"] == "unverified"],
     }
 
+    roof = roof_check.check_roof_area(report, meta.get("num_stories"))
+
     return render_template(
         "job_quality.html",
         active_tab="quality", job_id=job_id, meta=meta,
@@ -1041,7 +1044,27 @@ def job_quality(job_id: str):
         flagged_count=len(flagged),
         ok_count=qc["checked"] - len(flagged),
         groups=groups,
+        roof=roof,
     )
+
+
+@app.route("/job/<job_id>/quality/stories", methods=["POST"])
+@_require_auth
+@_require_parsed
+def job_quality_stories(job_id: str):
+    """Save the engineer-entered number of stories, then re-run the checks."""
+    meta = _load_meta(job_id)
+    raw = (request.form.get("num_stories") or "").strip()
+    if raw == "":
+        meta.pop("num_stories", None)
+    else:
+        try:
+            meta["num_stories"] = int(float(raw))
+        except ValueError:
+            flash("Number of stories must be a whole number.")
+            return redirect(url_for("job_quality", job_id=job_id))
+    _save_meta(job_id, meta)
+    return redirect(url_for("job_quality", job_id=job_id))
 
 
 # ─── Routes: Charts tab ───────────────────────────────────────────────
