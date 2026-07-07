@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Quality Check — {{ meta.project_name or "Job" }}{% endblock %}
+
+{# Quality Check tab — flags rooms whose typed NAME doesn't look consistent
+   with the room TYPE / definition the engineer selected in Design Master. #}
+
+{% block content %}
+  {% include "_tabs.html" %}
+
+  <section class="job-header">
+    <h2>Quality Check — {{ meta.project_name }}</h2>
+    <p class="muted">{{ meta.project_address }}</p>
+  </section>
+
+  {# ════════════════════════════════════════════════════════════════════
+     1. Wix validation — HTML envelope/spec values vs. the Wix project record
+     ════════════════════════════════════════════════════════════════════ #}
+  <h3>Project data vs. Wix</h3>
+  <p class="muted small">
+    Compares envelope and spec values parsed from the Design Master HTML against
+    the linked Wix project record.
+  </p>
+
+  {% if meta.mismatches %}
+    <div class="wix-mismatch-banner">
+      <strong>⚠ {{ meta.mismatches|length }} mismatch{% if meta.mismatches|length != 1 %}es{% endif %}</strong>
+      <table class="mismatch-table">
+        <thead>
+          <tr><th>Field</th><th>Wix value</th><th>HTML value(s)</th></tr>
+        </thead>
+        <tbody>
+          {% for m in meta.mismatches %}
+            <tr>
+              <td>{{ m.field }}</td>
+              <td>{{ m.wix_value }}</td>
+              <td>{{ m.html_values|join(", ") }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% elif meta.wix_item_id %}
+    <div class="wix-ok-banner"><p>✓ All checked fields agree with Wix.</p></div>
+  {% else %}
+    <p class="muted">No Wix project linked — envelope/spec validation was skipped for this job.</p>
+  {% endif %}
+
+  {# ════════════════════════════════════════════════════════════════════
+     2. Room name vs. room type ("definition") consistency
+     ════════════════════════════════════════════════════════════════════ #}
+  <h3 style="margin-top:2rem;">Room name vs. room type</h3>
+  <p class="muted small">
+    Compares each room's <strong>name</strong> (what you typed) against the
+    <strong>room type</strong> you selected, and flags anything that doesn't
+    clearly match. Advisory only — it changes nothing in the deliverables.
+  </p>
+
+  {# ── Summary banner ──────────────────────────────────────────────── #}
+  {% if checked == 0 %}
+    <div class="wix-mismatch-banner">
+      <strong>No rooms found to check.</strong>
+      <p class="muted" style="margin:.5rem 0 0;">
+        This job has no parsed Room Information — re-parse the HTML if that's unexpected.
+      </p>
+    </div>
+  {% elif flagged_count == 0 %}
+    <div class="wix-ok-banner">
+      <p>✓ All {{ checked }} rooms — name and type look consistent.</p>
+    </div>
+  {% else %}
+    <div class="wix-mismatch-banner">
+      <strong>{{ flagged_count }} of {{ checked }} room{{ 's' if checked != 1 }} need a look</strong>
+      <p class="muted" style="margin:.5rem 0 0;">
+        {{ ok_count }} matched cleanly.
+        {% if groups.mismatch %}{{ groups.mismatch|length }} possible mismatch{{ 'es' if groups.mismatch|length != 1 }}{% endif %}{% if groups.missing_definition %}{% if groups.mismatch %}, {% endif %}{{ groups.missing_definition|length }} with no type{% endif %}{% if groups.unverified %}{% if groups.mismatch or groups.missing_definition %}, {% endif %}{{ groups.unverified|length }} couldn't be auto-verified{% endif %}.
+      </p>
+    </div>
+  {% endif %}
+
+  {# ── Possible mismatches (high signal) ───────────────────────────── #}
+  {% if groups.mismatch %}
+    <h3 style="margin-top:1.75rem;">Possible mismatches</h3>
+    <p class="muted small">The name reads as something different than the selected type.</p>
+    <table class="duct-preview qc-table">
+      <thead>
+        <tr><th>Room name</th><th>Selected type</th><th>Why flagged</th></tr>
+      </thead>
+      <tbody>
+        {% for f in groups.mismatch %}
+          <tr class="qc-mismatch">
+            <td>{{ f.name }}</td>
+            <td>{{ f.definition }}</td>
+            <td class="muted">{{ f.reason }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {# ── No room type selected ───────────────────────────────────────── #}
+  {% if groups.missing_definition %}
+    <h3 style="margin-top:1.75rem;">No room type selected</h3>
+    <p class="muted small">These rooms have a name but no ventilation type assigned.</p>
+    <table class="duct-preview qc-table">
+      <thead>
+        <tr><th>Room name</th><th>Selected type</th><th>Why flagged</th></tr>
+      </thead>
+      <tbody>
+        {% for f in groups.missing_definition %}
+          <tr class="qc-missing">
+            <td>{{ f.name }}</td>
+            <td class="muted"><em>(none)</em></td>
+            <td class="muted">{{ f.reason }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {# ── Couldn't auto-verify (low signal) ───────────────────────────── #}
+  {% if groups.unverified %}
+    <h3 style="margin-top:1.75rem;">Couldn't auto-verify</h3>
+    <p class="muted small">
+      The name has no descriptive word to check (e.g. a bare room number or an
+      abbreviation the checker doesn't know). Likely fine — glance to confirm.
+    </p>
+    <table class="duct-preview qc-table">
+      <thead>
+        <tr><th>Room name</th><th>Selected type</th><th>Note</th></tr>
+      </thead>
+      <tbody>
+        {% for f in groups.unverified %}
+          <tr>
+            <td>{{ f.name }}</td>
+            <td>{{ f.definition }}</td>
+            <td class="muted">{{ f.reason }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {# ════════════════════════════════════════════════════════════════════
+     3. Roof area vs. total square footage
+     ════════════════════════════════════════════════════════════════════ #}
+  <h3 style="margin-top:2rem;">Roof vs. total square footage</h3>
+  <p class="muted small">
+    Divides total floor area (all zones) by roof area — the result should land
+    near the number of stories. Enter the story count; if the ratio is more than
+    10% off, the roof geometry may need a look (verify in AutoCAD). Advisory
+    only — it changes nothing in the deliverables.
+  </p>
+
+  <form method="post" action="{{ url_for('job_quality_stories', job_id=job_id) }}"
+        class="stories-form" style="margin:.5rem 0 1rem;">
+    <label for="num_stories"><strong>Number of stories</strong></label>
+    <input type="number" id="num_stories" name="num_stories" min="1" step="1"
+           value="{{ meta.num_stories or '' }}"
+           style="width:6rem; margin:0 .5rem;">
+    <button type="submit" class="btn-secondary">Check</button>
+  </form>
+
+  {% if not roof.ran %}
+    <p class="muted">{{ roof.reason }}</p>
+  {% elif roof.ok %}
+    <div class="wix-ok-banner">
+      <p>✓ Roof area looks consistent —
+        ratio <strong>{{ "%.2f"|format(roof.ratio) }}</strong>
+        is within 10% of {{ roof.num_stories }}
+        {{ "story" if roof.num_stories == 1 else "stories" }}
+        (acceptable {{ "%.2f"|format(roof.low) }}–{{ "%.2f"|format(roof.high) }}).</p>
+    </div>
+  {% else %}
+    <div class="wix-mismatch-banner">
+      <strong>⚠ Roof may be an issue — check the roof geometry.</strong>
+      <p class="muted" style="margin:.5rem 0 0;">
+        Total floor area {{ "{:,.0f}".format(roof.total_area) }} ft² ÷ roof area
+        {{ "{:,.0f}".format(roof.roof_area) }} ft² =
+        ratio <strong>{{ "%.2f"|format(roof.ratio) }}</strong>, which is outside
+        10% of {{ roof.num_stories }}
+        {{ "story" if roof.num_stories == 1 else "stories" }}
+        (expected {{ "%.2f"|format(roof.low) }}–{{ "%.2f"|format(roof.high) }}).
+      </p>
+    </div>
+  {% endif %}
+
+{% endblock %}
