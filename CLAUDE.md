@@ -14,7 +14,9 @@ python app.py                       # local dev, http://localhost:5000
 APP_PASSWORD=foo python app.py      # local with auth enabled
 ```
 
-Production is `gunicorn app:app --workers 2 --timeout 120` (see `Procfile` / `render.yaml`). Python 3.12.6 (pinned in `runtime.txt`). No test suite, no linter config.
+Production runs on Render as a **Docker** service (`Dockerfile` + `render.yaml`, `runtime: docker`), `gunicorn app:app --workers 1 --timeout 120`. Docker is used so the image can install **LibreOffice**, which renders the three schedule `.xlsx` files to PDF (see below); a single worker keeps the memory peak low enough to avoid OOM on Render Starter. Python 3.12.6 (pinned in `runtime.txt` and the Dockerfile base). No test suite, no linter config.
+
+The three signed schedules are generated as Excel first (`schedule_xlsx.py`), then converted to spreadsheet-origin PDFs via headless LibreOffice (`xlsx_to_pdf.py`) — this is what makes them import cleanly into AutoCAD. If LibreOffice isn't present (e.g. local dev on macOS), conversion returns `None` and `build_all_pdfs` falls back to the legacy ReportLab renderers so a PDF still gets produced. The Combined PDF is never an Excel file — it stays a PyMuPDF merge of the converted PDFs + charts + HTML appendix.
 
 ## Environment variables
 
@@ -49,7 +51,9 @@ jobs/<job_id>/
 
 ### Module map (logic lives here, NOT in `app.py`)
 
-- `hvac_pipeline.py` — the big one. Parses the DM HTML (BeautifulSoup), computes loads, renders the three deliverable PDFs (ReportLab). Public entry: `build_all_pdfs(html_path, config, engineer, firm, out_dir, zone_overrides)`. Also exposes `STATE_TABLE` (per-state codes used by the spec engine).
+- `hvac_pipeline.py` — the big one. Parses the DM HTML (BeautifulSoup), computes loads. Public entry: `build_all_pdfs(html_path, config, engineer, firm, out_dir, zone_overrides)` — for each of the three schedules it builds an `.xlsx` (`schedule_xlsx.py`), converts it to PDF (`xlsx_to_pdf.py`), and falls back to the in-module ReportLab renderers (`build_ventilation_schedule_pdf` etc.) if conversion is unavailable. Also exposes `STATE_TABLE` (per-state codes used by the spec engine).
+- `schedule_xlsx.py` — openpyxl renderers for the three signed schedules (Ventilation, Air Balance, Load Summary) with print setup (US Letter, portrait, fit-to-width, repeating header rows). Duck-types the `ComputedReport` dataclasses; lazy-imports a couple of `hvac_pipeline` helpers to avoid a circular import.
+- `xlsx_to_pdf.py` — `convert(xlsx, pdf)` via headless LibreOffice (`soffice --convert-to pdf`), per-call throwaway user profile so concurrent runs don't collide. Returns `None` (never raises) when LibreOffice is missing or conversion fails — the pipeline then uses the ReportLab fallback.
 - `spec_engine.py` — pure spec renderer. Pipeline: `eval_condition` → `resolve_fields` → `resolve_placeholders` → `build_spec` (filters empty sections, renumbers PART-scoped). Numbering is never stored.
 - `spec_data.py` — loads Spec Parts/Sections/Clauses from Wix (collections `Import5/6/7`), falls back to bundled `spec_seed.json` when Wix is unreachable.
 - `spec_docx.py` — renders a `RenderedSpec` to .docx (python-docx, Calibri, B&W).
