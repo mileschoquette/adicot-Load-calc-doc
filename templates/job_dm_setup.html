@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "_tabs.html" %}
+
+<h2>Generate DM Setup</h2>
+<p class="muted">
+  Select the room types and construction types to write into Design Master, then
+  download a <code>.vbs</code> setup script. Run it in the job folder (next to
+  <code>dm_hvac*.dm</code>) with the drawing <strong>closed in AutoCAD</strong>. The
+  script backs up the <code>.dm</code> first and skips any type already present, so
+  it is safe to re-run.
+</p>
+
+<form method="post" action="{{ url_for('job_dm_setup_generate', job_id=job_id) }}" class="job-form">
+
+  {# ── Room types ─────────────────────────────────────────────────── #}
+  <section>
+    <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:.5rem;">
+      <h3 style="margin:0;">Room types</h3>
+      <span class="muted" style="font-size:.85rem;">{{ lib_count }} available &middot;
+        {{ used_in_lib|length }} used by this job (pre-selected)</span>
+    </div>
+
+    <input type="search" id="rtFilter" placeholder="Filter room types…"
+           style="width:100%; margin:.6rem 0; padding:.4rem .6rem;"
+           oninput="filterRoomTypes(this.value)">
+
+    {% if used_in_lib %}
+    <details open class="rt-group" data-source="in-use">
+      <summary><strong>Used by this job</strong> ({{ used_in_lib|length }})</summary>
+      <div class="rt-list">
+        {% for name in used_in_lib %}
+        <label class="checkbox rt-item" data-name="{{ name|lower }}">
+          <input type="checkbox" name="room_types" value="{{ name }}"
+                 {{ 'checked' if name in selected }}>
+          <span class="rt-badge">in job</span> {{ name }}
+        </label>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
+    {% for source, items in grouped %}
+    <details class="rt-group">
+      <summary>
+        <label class="checkbox" style="display:inline-flex; margin:0;"
+               onclick="event.stopPropagation();">
+          <input type="checkbox" onchange="toggleGroup(this)"> {{ source }}
+        </label>
+        <span class="muted">({{ items|length }})</span>
+      </summary>
+      <div class="rt-list">
+        {% for rt in items %}
+        <label class="checkbox rt-item" data-name="{{ rt.name|lower }}">
+          <input type="checkbox" name="room_types" value="{{ rt.name }}"
+                 {{ 'checked' if rt.name in selected }}>
+          {{ rt.name }}
+          {% if rt.summary %}<span class="muted rt-summary">— {{ rt.summary }}</span>{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+
+  {# ── Construction types (from the parsed job) ───────────────────── #}
+  <section>
+    <h3 style="margin-top:0;">Construction types <span class="muted" style="font-size:.85rem; font-weight:400;">from this job's Design Master export</span></h3>
+
+    {% macro con_list(title, items, field, show_shgc=False) %}
+      <h4 style="margin:.8rem 0 .3rem;">{{ title }}</h4>
+      {% if items %}
+        {% for c in items %}
+        <div class="field-row">
+          <label class="checkbox">
+            <input type="checkbox" name="{{ field }}" value="{{ c.name }}"
+                   {{ 'checked' if c.insertable }} {{ 'disabled' if not c.insertable }}>
+            {{ c.name }}
+            <span class="muted">
+              — U {{ '%.3f'|format(c.u_value) if c.u_value is not none else '?' }}
+              {% if show_shgc %}, SHGC {{ c.shgc if c.shgc is not none else '?' }}{% endif %}
+            </span>
+          </label>
+          {% if not c.insertable %}
+          <span class="rt-badge warnbadge" title="No DM construction-type code in the export — add this one manually in Design Master">no type code</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted" style="margin:.2rem 0 0;">None parsed.</p>
+      {% endif %}
+    {% endmacro %}
+
+    {{ con_list("Wall types", walls, "wall_types") }}
+    {{ con_list("Roof types", roofs, "roof_types") }}
+    {{ con_list("Door types", doors, "door_types") }}
+    {{ con_list("Glass types", glasses, "glass_types", show_shgc=True) }}
+  </section>
+
+  <div class="submit-row">
+    <button type="submit" class="primary">Generate &amp; download .vbs</button>
+  </div>
+</form>
+
+<div class="warn" style="margin:1rem 0;">
+  <strong>Heads-up:</strong> Windows SmartScreen or antivirus may warn on a downloaded
+  <code>.vbs</code>. It's expected for internal scripts — right-click &rarr; Properties
+  &rarr; Unblock if needed, and always run it against a job copy first.
+</div>
+
+<style>
+.rt-group { border:1px solid #ddd; border-radius:6px; margin:.5rem 0; padding:.3rem .6rem; }
+.rt-group[data-source="in-use"] { border-color:#0c447c; background:#f4f8fd; }
+.rt-group summary { cursor:pointer; font-weight:600; padding:.2rem 0; }
+.rt-list { display:grid; grid-template-columns:1fr; gap:.15rem; max-height:22rem; overflow:auto; padding:.4rem 0 .2rem; }
+.rt-item { display:block; padding:.15rem .3rem; border-radius:4px; }
+.rt-item:hover { background:#f0f0f0; }
+.rt-summary { font-size:.82rem; }
+.rt-badge { font-size:.68rem; font-weight:600; background:#0c447c; color:#fff; padding:1px 6px; border-radius:4px; margin-right:.2rem; }
+.warnbadge { background:#8a5a00; }
+</style>
+
+<script>
+// Live filter across all room-type groups. Opens groups that have matches.
+function filterRoomTypes(q) {
+  q = (q || '').trim().toLowerCase();
+  document.querySelectorAll('.rt-group').forEach(group => {
+    let shown = 0;
+    group.querySelectorAll('.rt-item').forEach(item => {
+      const hit = !q || item.dataset.name.includes(q);
+      item.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    group.style.display = shown ? '' : 'none';
+    if (q && shown) group.open = true;
+  });
+}
+
+// "Select all" checkbox in a group header toggles that group's visible items.
+function toggleGroup(master) {
+  const group = master.closest('.rt-group');
+  group.querySelectorAll('.rt-item').forEach(item => {
+    if (item.style.display === 'none') return;   // respect the active filter
+    const cb = item.querySelector('input[type=checkbox]');
+    if (cb && !cb.disabled) cb.checked = master.checked;
+  });
+}
+</script>
+
+{% endblock %}

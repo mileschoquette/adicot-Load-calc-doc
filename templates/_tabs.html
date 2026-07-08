@@ -22,6 +22,8 @@
        href="{{ url_for('job_equip', job_id=job_id) }}">Equipment</a>
     <a class="tab {% if active_tab == 'quality' %}active{% endif %}"
        href="{{ url_for('job_quality', job_id=job_id) }}">Quality Check</a>
+    <a class="tab {% if active_tab == 'dm-setup' %}active{% endif %}"
+       href="{{ url_for('job_dm_setup', job_id=job_id) }}">Generate DM Setup</a>
   {% else %}
     <span class="tab disabled" title="Parse the job to enable">PDF</span>
     <span class="tab disabled" title="Parse the job to enable">Duct Sizing</span>
@@ -29,6 +31,7 @@
     <span class="tab disabled" title="Parse the job to enable">Specs</span>
     <span class="tab disabled" title="Parse the job to enable">Equipment</span>
     <span class="tab disabled" title="Parse the job to enable">Quality Check</span>
+    <span class="tab disabled" title="Parse the job to enable">Generate DM Setup</span>
   {% endif %}
   <a class="tab tab-right" href="{{ url_for('index') }}">All Jobs</a>
 </nav>
