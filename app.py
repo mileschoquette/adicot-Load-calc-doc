@@ -91,6 +91,15 @@ except Exception as _e:
     HAS_EQUIP_SELECTOR = False
     _EQUIP_IMPORT_ERROR = str(_e)
 
+# ── DM Setup .vbs generator (optional — graceful fallback if module missing) ──
+try:
+    import dm_setup_generator as dmsg
+    HAS_DM_SETUP_GENERATOR = True
+    _DM_SETUP_IMPORT_ERROR = None
+except Exception as _e:
+    HAS_DM_SETUP_GENERATOR = False
+    _DM_SETUP_IMPORT_ERROR = str(_e)
+
 # ─── Paths ───────────────────────────────────────────────────────────
 APP_DIR = Path(__file__).resolve().parent
 JOBS_DIR = Path(os.environ.get("JOBS_DIR", APP_DIR / "jobs"))
@@ -2189,6 +2198,150 @@ def job_spec_download_docx(job_id: str):
         as_attachment=True,
         download_name=out_path.name,
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
+# ─── Routes: Generate DM Setup tab ───────────────────────────────────
+
+def _dm_setup_construction(report: dict) -> dict:
+    """Build display lists of the job's parsed construction types. Wall/roof/door
+    need a DM iType (ashrae_type) to be insertable; flag those that lack one."""
+    def con(items):
+        out = []
+        for c in items:
+            it = c.get("ashrae_type")
+            out.append({
+                "name": c.get("name", ""),
+                "u_value": c.get("u_value"),
+                "itype": it,
+                "dark": "dark" in (c.get("color") or "").lower(),
+                "insertable": it is not None,
+            })
+        return [c for c in out if c["name"]]
+
+    def glass(items):
+        return [{"name": c.get("name", ""), "u_value": c.get("u_value"),
+                 "shgc": c.get("shgc"), "insertable": True}
+                for c in items if c.get("name")]
+
+    return {
+        "walls": con(report.get("wall_types", [])),
+        "roofs": con(report.get("roof_types", [])),
+        "doors": con(report.get("door_types", [])),
+        "glasses": glass(report.get("glass_types", [])),
+    }
+
+
+@app.route("/job/<job_id>/dm-setup")
+@_require_auth
+@_require_parsed
+def job_dm_setup(job_id: str):
+    _job_dir(job_id)
+    meta = _load_meta(job_id)
+    report = _load_report(job_id)
+
+    if not HAS_DM_SETUP_GENERATOR:
+        flash(f"DM Setup generator unavailable: {_DM_SETUP_IMPORT_ERROR}")
+        return redirect(url_for("results", job_id=job_id))
+
+    library = dmsg.list_room_types()                       # [{name, source, summary}]
+    lib_names = {rt["name"] for rt in library}
+    # Room types this job actually uses (parsed from the DM export)
+    used_in_lib = sorted({r.get("name") for r in report.get("rooms_p1", [])
+                          if r.get("name")} & lib_names)
+
+    saved = meta.get("dm_setup_inputs", {})
+    selected = set(saved.get("selected_room_types") or used_in_lib)
+
+    # Group the library by source for display (170 / FBC / 621 / other)
+    order = {"170": 0, "FBC": 1, "621": 2}
+    groups: dict[str, list] = {}
+    for rt in library:
+        groups.setdefault(rt.get("source") or "Other", []).append(rt)
+    grouped = sorted(groups.items(),
+                     key=lambda kv: (order.get(kv[0], 9), kv[0]))
+
+    con = _dm_setup_construction(report)
+    return render_template(
+        "job_dm_setup.html",
+        active_tab="dm-setup", job_id=job_id, meta=meta,
+        grouped=grouped, selected=selected, used_in_lib=used_in_lib,
+        lib_count=len(library), **con,
+    )
+
+
+@app.route("/job/<job_id>/dm-setup/generate", methods=["POST"])
+@_require_auth
+def job_dm_setup_generate(job_id: str):
+    job_dir = _job_dir(job_id)
+    meta = _load_meta(job_id)
+    report = _load_report(job_id)
+
+    if not HAS_DM_SETUP_GENERATOR:
+        flash(f"DM Setup generator unavailable: {_DM_SETUP_IMPORT_ERROR}")
+        return redirect(url_for("results", job_id=job_id))
+
+    selected = request.form.getlist("room_types")
+    inc_walls = set(request.form.getlist("wall_types"))
+    inc_roofs = set(request.form.getlist("roof_types"))
+    inc_doors = set(request.form.getlist("door_types"))
+    inc_glass = set(request.form.getlist("glass_types"))
+
+    if not selected and not (inc_walls or inc_roofs or inc_doors or inc_glass):
+        flash("Select at least one room type or construction type to generate a setup script.")
+        return redirect(url_for("job_dm_setup", job_id=job_id))
+
+    # Persist the selection so it repopulates on the next visit.
+    meta["dm_setup_inputs"] = {
+        "selected_room_types": selected,
+        "wall_types": sorted(inc_walls), "roof_types": sorted(inc_roofs),
+        "door_types": sorted(inc_doors), "glass_types": sorted(inc_glass),
+    }
+    _save_meta(job_id, meta)
+
+    # Map parsed construction types (by name) to the generator's expected dicts.
+    def build(items, names, glass=False):
+        out = []
+        for c in items:
+            if c.get("name") not in names:
+                continue
+            desc = c.get("description") or c.get("name")
+            if glass:
+                out.append({"name": c["name"], "description": desc,
+                            "u": c.get("u_value") or 0.0, "shgc": c.get("shgc") or 0.0})
+            else:
+                if c.get("ashrae_type") is None:
+                    continue  # iType is NOT NULL in DM — can't insert without it
+                out.append({"name": c["name"], "description": desc,
+                            "u": c.get("u_value") or 0.0, "itype": c["ashrae_type"],
+                            "dark": "dark" in (c.get("color") or "").lower()})
+        return out
+
+    walls = build(report.get("wall_types", []), inc_walls)
+    roofs = build(report.get("roof_types", []), inc_roofs)
+    doors = build(report.get("door_types", []), inc_doors)
+    glasses = build(report.get("glass_types", []), inc_glass, glass=True)
+
+    try:
+        vbs = dmsg.render_setup_vbs(
+            meta.get("project_name") or job_id, selected,
+            wall_types=walls, glass_types=glasses,
+            roof_types=roofs, door_types=doors,
+        )
+    except KeyError as e:
+        flash(f"Could not generate setup script: {e}")
+        return redirect(url_for("job_dm_setup", job_id=job_id))
+
+    safe = secure_filename(meta.get("project_name") or job_id) or "job"
+    out_path = job_dir / "out" / f"{safe}-DM-Setup.vbs"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(vbs, encoding="utf-8")
+
+    return send_file(
+        out_path,
+        as_attachment=True,
+        download_name=out_path.name,
+        mimetype="text/vbscript",
     )
 
 
