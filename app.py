@@ -2203,39 +2203,137 @@ def job_spec_download_docx(job_id: str):
 
 # ─── Routes: Generate DM Setup tab ───────────────────────────────────
 
-def _dm_setup_construction(report: dict) -> dict:
-    """Build display lists of the job's parsed construction types. Wall/roof/door
-    need a DM iType (ashrae_type) to be insertable; flag those that lack one."""
-    def con(items):
-        out = []
-        for c in items:
-            it = c.get("ashrae_type")
-            out.append({
-                "name": c.get("name", ""),
-                "u_value": c.get("u_value"),
-                "itype": it,
-                "dark": "dark" in (c.get("color") or "").lower(),
-                "insertable": it is not None,
-            })
-        return [c for c in out if c["name"]]
+# Confirmed DM construction "type code" (iType / mass class) values, per the real
+# dm_hvac.dm. The engineer picks one per row (never auto-filled); each row's dropdown
+# also includes the .dm's own value so a valid code is always available.
+_MASS_CLASS_OPTIONS = {
+    "wall": [("Frame", 2), ("Wood stud", 5), ("Block / CMU", 10)],
+    "roof": [("Wood deck / vented attic", 4), ("Frame", 2), ("Concrete / masonry", 10)],
+    "door": [("Steel, insulated", 2), ("Wood", 5)],
+}
 
-    def glass(items):
-        return [{"name": c.get("name", ""), "u_value": c.get("u_value"),
-                 "shgc": c.get("shgc"), "insertable": True}
-                for c in items if c.get("name")]
+
+def _num(v):
+    """First number found in v (e.g. 'R-19' -> 19.0, '0.44' -> 0.44), else None."""
+    if v is None:
+        return None
+    m = re.search(r"-?\d+(?:\.\d+)?", str(v))
+    return float(m.group()) if m else None
+
+
+def _r_to_u(v):
+    """R-value string -> assembly U (U = 1/R). Values <=1 are treated as already-U."""
+    n = _num(v)
+    if not n or n <= 0:
+        return None
+    return round(1.0 / n, 3) if n > 1 else round(n, 3)
+
+
+def _wix_envelope(snap: dict) -> dict:
+    """Envelope spec candidates pulled from the Wix work-order record (if any)."""
+    snap = snap or {}
+    wc, rc = (snap.get("wallColor") or ""), (snap.get("roofColor") or "")
+    return {
+        "wall_primary_u": _r_to_u(snap.get("wallRValue")),
+        "wall_part_u":    _r_to_u(snap.get("partRValue")),
+        "wall_dark":      "dark" in wc.lower(), "wall_has_color": bool(wc),
+        "roof_u":         _r_to_u(snap.get("roofRValue")),
+        "roof_dark":      "dark" in rc.lower(), "roof_has_color": bool(rc),
+        "glass_u":        _num(snap.get("glassU")),
+        "glass_shgc":     _num(snap.get("glassSHGC")),
+    }
+
+
+def _mass_options(cat: str, export_itype):
+    """(label, code) options for a row's mass-class dropdown, always including the
+    .dm's own code so nothing valid is lost."""
+    opts = list(_MASS_CLASS_OPTIONS.get(cat, []))
+    if export_itype is not None and all(code != export_itype for _, code in opts):
+        opts.append((f"As in .dm (type {export_itype})", export_itype))
+    return opts
+
+
+def _dm_setup_construction(report: dict, meta: dict) -> dict:
+    """Editable construction-type rows: DM-export list, spec fields prefilled from
+    the Wix work-order when available (source-tagged), .dm value as fallback."""
+    wix = _wix_envelope(meta.get("wix_snapshot") or {})
+
+    def pick(wix_val, export_val):
+        """Return (value, source): Wix wins, then the .dm value, else blank."""
+        if wix_val is not None:
+            return wix_val, "Wix"
+        if export_val is not None:
+            return export_val, ".dm"
+        return "", ""
+
+    def opaque(cat, items):
+        rows = []
+        for c in items:
+            if not c.get("name"):
+                continue
+            name = c["name"]
+            if cat == "wall":
+                wu = wix["wall_part_u"] if "part" in name.lower() else wix["wall_primary_u"]
+                wu = wu if wu is not None else wix["wall_primary_u"]
+                wdark, wdark_src = (wix["wall_dark"], "Wix") if wix["wall_has_color"] \
+                    else ("dark" in (c.get("color") or "").lower(), ".dm")
+            elif cat == "roof":
+                wu = wix["roof_u"]
+                wdark, wdark_src = (wix["roof_dark"], "Wix") if wix["roof_has_color"] \
+                    else ("dark" in (c.get("color") or "").lower(), ".dm")
+            else:  # door — Wix has no door U/color
+                wu = None
+                wdark, wdark_src = ("dark" in (c.get("color") or "").lower(), ".dm")
+            u, u_src = pick(wu, c.get("u_value"))
+            rows.append({
+                "name": name, "u": u, "u_source": u_src,
+                "dark": bool(wdark), "dark_source": wdark_src,
+                "options": _mass_options(cat, c.get("ashrae_type")),
+            })
+        # Pre-parse (no .dm export yet): synthesize rows from the Wix work-order.
+        if not rows:
+            def wrow(name, u, dark, has_color):
+                return {"name": name,
+                        "u": u if u is not None else "", "u_source": "Wix" if u is not None else "",
+                        "dark": bool(dark), "dark_source": "Wix" if has_color else "",
+                        "options": _mass_options(cat, None)}
+            if cat == "wall":
+                if wix["wall_primary_u"] is not None:
+                    rows.append(wrow("Exterior wall (work order)", wix["wall_primary_u"], wix["wall_dark"], wix["wall_has_color"]))
+                if wix["wall_part_u"] is not None:
+                    rows.append(wrow("Partition (work order)", wix["wall_part_u"], wix["wall_dark"], wix["wall_has_color"]))
+            elif cat == "roof" and wix["roof_u"] is not None:
+                rows.append(wrow("Roof (work order)", wix["roof_u"], wix["roof_dark"], wix["roof_has_color"]))
+            # door: Wix has no door U — nothing to synthesize
+        return rows
+
+    glasses = []
+    for c in report.get("glass_types", []):
+        if not c.get("name"):
+            continue
+        u, u_src = pick(wix["glass_u"], c.get("u_value"))
+        s, s_src = pick(wix["glass_shgc"], c.get("shgc"))
+        glasses.append({"name": c["name"], "u": u, "u_source": u_src,
+                        "shgc": s, "shgc_source": s_src})
+    if not glasses and wix["glass_u"] is not None:
+        glasses.append({"name": "Glazing (work order)",
+                        "u": wix["glass_u"], "u_source": "Wix",
+                        "shgc": wix["glass_shgc"] if wix["glass_shgc"] is not None else "",
+                        "shgc_source": "Wix" if wix["glass_shgc"] is not None else ""})
 
     return {
-        "walls": con(report.get("wall_types", [])),
-        "roofs": con(report.get("roof_types", [])),
-        "doors": con(report.get("door_types", [])),
-        "glasses": glass(report.get("glass_types", [])),
+        "walls": opaque("wall", report.get("wall_types", [])),
+        "roofs": opaque("roof", report.get("roof_types", [])),
+        "doors": opaque("door", report.get("door_types", [])),
+        "glasses": glasses,
+        "from_wix": bool(meta.get("wix_snapshot")),
     }
 
 
 @app.route("/job/<job_id>/dm-setup")
 @_require_auth
-@_require_parsed
 def job_dm_setup(job_id: str):
+    # Available alongside the work order — no parsed report required. report may be {}.
     _job_dir(job_id)
     meta = _load_meta(job_id)
     report = _load_report(job_id)
@@ -2261,10 +2359,11 @@ def job_dm_setup(job_id: str):
     grouped = sorted(groups.items(),
                      key=lambda kv: (order.get(kv[0], 9), kv[0]))
 
-    con = _dm_setup_construction(report)
+    con = _dm_setup_construction(report, meta)
     return render_template(
         "job_dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
+        parsed=_is_parsed(_job_dir(job_id)),
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,
     )
@@ -2282,45 +2381,65 @@ def job_dm_setup_generate(job_id: str):
         return redirect(url_for("results", job_id=job_id))
 
     selected = request.form.getlist("room_types")
-    inc_walls = set(request.form.getlist("wall_types"))
-    inc_roofs = set(request.form.getlist("roof_types"))
-    inc_doors = set(request.form.getlist("door_types"))
-    inc_glass = set(request.form.getlist("glass_types"))
+    errors: list[str] = []
 
-    if not selected and not (inc_walls or inc_roofs or inc_doors or inc_glass):
+    def _f(key):
+        return (request.form.get(key) or "").strip()
+
+    def read_opaque(cat):
+        """Read included wall/roof/door rows from the editable form fields."""
+        out = []
+        for i in request.form.getlist(f"{cat}_include"):
+            name = _f(f"{cat}_name_{i}")
+            if not name:
+                continue
+            u, t = _f(f"{cat}_u_{i}"), _f(f"{cat}_type_{i}")
+            if not u or not t:
+                errors.append(f"{name}: needs both a U-value and a mass class.")
+                continue
+            try:
+                out.append({"name": name, "description": name, "u": float(u),
+                            "itype": int(t),
+                            "dark": request.form.get(f"{cat}_dark_{i}") is not None})
+            except ValueError:
+                errors.append(f"{name}: U-value must be a number.")
+        return out
+
+    def read_glass():
+        out = []
+        for i in request.form.getlist("glass_include"):
+            name = _f(f"glass_name_{i}")
+            if not name:
+                continue
+            u, s = _f(f"glass_u_{i}"), _f(f"glass_shgc_{i}")
+            if not u:
+                errors.append(f"{name}: needs a U-value.")
+                continue
+            try:
+                out.append({"name": name, "description": name,
+                            "u": float(u), "shgc": float(s) if s else 0.0})
+            except ValueError:
+                errors.append(f"{name}: U-value and SHGC must be numbers.")
+        return out
+
+    walls = read_opaque("wall")
+    roofs = read_opaque("roof")
+    doors = read_opaque("door")
+    glasses = read_glass()
+
+    if errors:
+        for e in errors:
+            flash(e)
+        return redirect(url_for("job_dm_setup", job_id=job_id))
+
+    if not selected and not (walls or roofs or doors or glasses):
         flash("Select at least one room type or construction type to generate a setup script.")
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    # Persist the selection so it repopulates on the next visit.
-    meta["dm_setup_inputs"] = {
-        "selected_room_types": selected,
-        "wall_types": sorted(inc_walls), "roof_types": sorted(inc_roofs),
-        "door_types": sorted(inc_doors), "glass_types": sorted(inc_glass),
-    }
+    # Persist the room-type selection so it repopulates on the next visit.
+    # (Construction rows re-prefill from Wix/.dm on each load.)
+    meta["dm_setup_inputs"] = {"selected_room_types": selected}
     _save_meta(job_id, meta)
-
-    # Map parsed construction types (by name) to the generator's expected dicts.
-    def build(items, names, glass=False):
-        out = []
-        for c in items:
-            if c.get("name") not in names:
-                continue
-            desc = c.get("description") or c.get("name")
-            if glass:
-                out.append({"name": c["name"], "description": desc,
-                            "u": c.get("u_value") or 0.0, "shgc": c.get("shgc") or 0.0})
-            else:
-                if c.get("ashrae_type") is None:
-                    continue  # iType is NOT NULL in DM — can't insert without it
-                out.append({"name": c["name"], "description": desc,
-                            "u": c.get("u_value") or 0.0, "itype": c["ashrae_type"],
-                            "dark": "dark" in (c.get("color") or "").lower()})
-        return out
-
-    walls = build(report.get("wall_types", []), inc_walls)
-    roofs = build(report.get("roof_types", []), inc_roofs)
-    doors = build(report.get("door_types", []), inc_doors)
-    glasses = build(report.get("glass_types", []), inc_glass, glass=True)
 
     try:
         vbs = dmsg.render_setup_vbs(
