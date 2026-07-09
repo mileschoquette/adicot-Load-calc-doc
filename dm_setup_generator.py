@@ -157,10 +157,18 @@ def _insert_block(table: str, ix_col: str, name: str, cols_sql: str,
     return (
         f'If Not RowExists("{table}", {_vbs_str(name)}) Then\n'
         f'  ix = NextIx("{table}", "{ix_col}")\n'
-        f'  conn.Execute {sql}\n'
-        f'  If Err.Number=0 Then nIns=nIns+1 Else nErr=nErr+1 : Err.Clear\n'
+        f'  s = {sql}\n'
+        f'  conn.Execute s\n'
+        f'  If Err.Number=0 Then\n'
+        f'    nIns=nIns+1 : logf.WriteLine "OK  {table}  " & ix & "  " & {_vbs_str(name)}\n'
+        f'  Else\n'
+        f'    nErr=nErr+1\n'
+        f'    logf.WriteLine "ERR {table}  [" & Err.Number & "] " & Err.Description\n'
+        f'    logf.WriteLine "    SQL: " & s\n'
+        f'    Err.Clear\n'
+        f'  End If\n'
         f'Else\n'
-        f'  nSkip=nSkip+1\n'
+        f'  nSkip=nSkip+1 : logf.WriteLine "SKIP {table}  (exists)  " & {_vbs_str(name)}\n'
         f'End If'
     )
 
@@ -204,8 +212,8 @@ def render_setup_vbs(
     for t in glass_types:
         vt = [_sql_val(t["name"]), _sql_val(t.get("description", t["name"])),
               _sql_val(t["u"]), _sql_val(t["shgc"])]
-        blocks.append(_insert_block("tblGlassS", "ixGlassS",
-                                    "ixGlassS,sName,sDescription,dU,dSHGC", t["name"], vt))
+        blocks.append(_insert_block("tblGlassS", "ixGlassS", t["name"],
+                                    "ixGlassS,sName,sDescription,dU,dSHGC", vt))
 
     for name in room_type_names:
         blocks.append(_insert_block("tblRoomS", "ixRoomS", name,
@@ -224,7 +232,7 @@ _TEMPLATE = r'''' Design Master setup script for: {job}
 ' AutoCAD before running. Inserts {n_con} construction type(s) and {n_room}
 ' Room Type(s). Existing types with the same name are skipped (safe to re-run).
 Option Explicit
-Dim fso, conn, f, fld, dmFile, ix, nIns, nSkip, nErr
+Dim fso, conn, f, fld, dmFile, ix, nIns, nSkip, nErr, s, logf
 nIns=0 : nSkip=0 : nErr=0
 
 Set fso = CreateObject("Scripting.FileSystemObject")
@@ -240,6 +248,11 @@ If MsgBox("Add {n_con} construction type(s) and {n_room} Room Type(s) to:" & vbC
     vbYesNo+vbQuestion, "DM Setup: {job}") <> vbYes Then WScript.Quit 0
 
 fso.CopyFile dmFile, dmFile & ".setup_backup.bak", True
+
+Set logf = fso.CreateTextFile(fso.GetParentFolderName(dmFile) & "\dm_setup_log.txt", True)
+logf.WriteLine "DM Setup log - " & Now
+logf.WriteLine dmFile
+logf.WriteLine "--------------------------------------------------"
 
 Set conn = CreateObject("ADODB.Connection")
 On Error Resume Next
@@ -269,9 +282,13 @@ On Error Resume Next
 On Error GoTo 0
 
 conn.Close
+logf.WriteLine "--------------------------------------------------"
+logf.WriteLine "Inserted " & nIns & ", Skipped " & nSkip & ", Errors " & nErr
+logf.Close
 MsgBox "Done." & vbCrLf & _
   "Inserted: " & nIns & vbCrLf & _
   "Skipped (already present): " & nSkip & vbCrLf & _
   "Errors: " & nErr & vbCrLf & vbCrLf & _
+  "Log: " & fso.GetParentFolderName(dmFile) & "\dm_setup_log.txt" & vbCrLf & _
   "Backup: " & dmFile & ".setup_backup.bak", vbInformation, "DM Setup complete"
 '''
