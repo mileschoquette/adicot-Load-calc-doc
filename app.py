@@ -2349,6 +2349,22 @@ def _dm_setup_job(job_id: str):
     return job_path, meta, {}, False
 
 
+def _dm_setup_settings(meta: dict) -> dict:
+    """Prefill for the editable project settings (bldg-name / bldg-city / weather
+    numerics), from the work order, overlaid with any previously saved values."""
+    snap = meta.get("wix_snapshot") or {}
+    ps = {
+        "project_name": meta.get("project_name") or snap.get("title") or "",
+        "weather_station": snap.get("weatherData") or snap.get("weatherStation") or "",
+        "latitude": "", "elevation": "", "osa_low_dry": "", "osa_daily_range": "",
+    }
+    saved = (meta.get("dm_setup_inputs") or {}).get("project_settings") or {}
+    for k, v in saved.items():
+        if v not in (None, ""):
+            ps[k] = v
+    return ps
+
+
 @app.route("/job/<job_id>/dm-setup")
 @_require_auth
 def job_dm_setup(job_id: str):
@@ -2380,6 +2396,7 @@ def job_dm_setup(job_id: str):
         "job_dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
         parsed=parsed, mass_options=_MASS_CLASS_OPTIONS,
+        settings=_dm_setup_settings(meta),
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,
     )
@@ -2440,31 +2457,39 @@ def job_dm_setup_generate(job_id: str):
     doors = read_opaque("door")
     glasses = read_glass()
 
+    # Project settings to overwrite in the .dm (only non-empty fields).
+    project_settings = {f: _f(f"ps_{f}") for f in dmsg.PROJECT_SETTING_KEYS}
+    project_settings = {k: v for k, v in project_settings.items() if v}
+
     if errors:
         for e in errors:
             flash(e)
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    if not selected and not (walls or roofs or doors or glasses):
-        flash("Select at least one room type or construction type to generate a setup script.")
+    if not selected and not (walls or roofs or doors or glasses) and not project_settings:
+        flash("Select at least one room type, construction type, or project setting to generate a setup script.")
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
+    # Use the edited project name for the file/dialog if provided.
+    proj_name = project_settings.get("project_name") or meta.get("project_name") or job_id
     try:
         vbs = dmsg.render_setup_vbs(
-            meta.get("project_name") or job_id, selected,
+            proj_name, selected,
             wall_types=walls, glass_types=glasses,
             roof_types=roofs, door_types=doors,
+            project_settings=project_settings,
         )
     except KeyError as e:
         flash(f"Could not generate setup script: {e}")
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    safe = secure_filename(meta.get("project_name") or job_id) or "job"
+    safe = secure_filename(proj_name) or "job"
     fname = f"{safe}-DM-Setup.vbs"
 
     if job_path.exists():
-        # Existing workspace: persist the artifact + the room-type selection.
-        meta["dm_setup_inputs"] = {"selected_room_types": selected}
+        # Existing workspace: persist the artifact + the selection & settings.
+        meta["dm_setup_inputs"] = {"selected_room_types": selected,
+                                   "project_settings": project_settings}
         _save_meta(job_id, meta)
         out_path = job_path / "out" / fname
         out_path.parent.mkdir(parents=True, exist_ok=True)

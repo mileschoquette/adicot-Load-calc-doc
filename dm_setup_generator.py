@@ -173,6 +173,42 @@ def _insert_block(table: str, ix_col: str, name: str, cols_sql: str,
     )
 
 
+# Editable project-level settings (tblGlobal key/value). friendly field -> (sKey, is_numeric).
+# Writing these overwrites the DM project (e.g. renames it / sets the weather station).
+PROJECT_SETTING_KEYS = {
+    "project_name":    ("bldg-name", False),
+    "weather_station": ("bldg-city", False),
+    "latitude":        ("bldg-latitude", True),
+    "elevation":       ("bldg-elevation", True),
+    "osa_low_dry":     ("bldg-osaLowDry", True),
+    "osa_daily_range": ("bldg-osaDailyRange", True),
+}
+
+
+def _global_calls(project_settings: dict | None) -> tuple[str, int]:
+    """Build the SetGlobalText/SetGlobalNum VBS calls (and their count) for the
+    non-empty project settings provided."""
+    if not project_settings:
+        return "", 0
+    lines = []
+    for field, (key, is_num) in PROJECT_SETTING_KEYS.items():
+        if field not in project_settings:
+            continue
+        val = project_settings[field]
+        if val is None or (isinstance(val, str) and not val.strip()):
+            continue
+        if is_num:
+            try:
+                f = float(val)
+            except (TypeError, ValueError):
+                continue
+            num = int(f) if f == int(f) else f
+            lines.append(f"  SetGlobalNum {_vbs_str(key)}, {num}")
+        else:
+            lines.append(f"  SetGlobalText {_vbs_str(key)}, {_vbs_str(str(val))}")
+    return "\n".join(lines), len(lines)
+
+
 def render_setup_vbs(
     job_name: str,
     room_type_names: Iterable[str],
@@ -181,6 +217,7 @@ def render_setup_vbs(
     glass_types: Sequence[dict] = (),
     roof_types: Sequence[dict] = (),
     door_types: Sequence[dict] = (),
+    project_settings: dict | None = None,
     library: dict[str, dict] | None = None,
 ) -> str:
     """Render the setup ``.vbs`` for the selected types.
@@ -189,6 +226,8 @@ def render_setup_vbs(
     Construction-type dicts:
       wall/roof/door: {name, description, u, itype, dark}
       glass:          {name, description, u, shgc}
+    ``project_settings`` (optional) maps PROJECT_SETTING_KEYS fields to values to
+    overwrite in tblGlobal (project name, weather station, weather numerics).
     """
     lib = library or load_room_types()
 
@@ -222,9 +261,11 @@ def render_setup_vbs(
     n_con = len(wall_types) + len(glass_types) + len(roof_types) + len(door_types)
     n_room = sum(1 for _ in room_type_names)
     indented = "\n\n".join("  " + b.replace("\n", "\n  ") for b in blocks)
+    globals_vbs, n_set = _global_calls(project_settings)
     safe_job = str(job_name).replace('"', "'")
 
-    return _TEMPLATE.format(job=safe_job, n_con=n_con, n_room=n_room, blocks=indented)
+    return _TEMPLATE.format(job=safe_job, n_con=n_con, n_room=n_room, n_set=n_set,
+                            globals=globals_vbs, blocks=indented)
 
 
 _TEMPLATE = r'''' Design Master setup script for: {job}
@@ -232,8 +273,8 @@ _TEMPLATE = r'''' Design Master setup script for: {job}
 ' AutoCAD before running. Inserts {n_con} construction type(s) and {n_room}
 ' Room Type(s). Existing types with the same name are skipped (safe to re-run).
 Option Explicit
-Dim fso, conn, f, fld, dmFile, ix, nIns, nSkip, nErr, s, logf
-nIns=0 : nSkip=0 : nErr=0
+Dim fso, conn, f, fld, dmFile, ix, nIns, nSkip, nErr, nSet, s, logf
+nIns=0 : nSkip=0 : nErr=0 : nSet=0
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set fld = fso.GetFolder(fso.GetParentFolderName(WScript.ScriptFullName))
@@ -243,7 +284,7 @@ For Each f In fld.Files
 Next
 If dmFile="" Then MsgBox "No dm_hvac*.dm found in this folder." : WScript.Quit 1
 
-If MsgBox("Add {n_con} construction type(s) and {n_room} Room Type(s) to:" & vbCrLf & _
+If MsgBox("Add {n_con} construction type(s), {n_room} Room Type(s), and update {n_set} project setting(s) in:" & vbCrLf & _
     dmFile & "?" & vbCrLf & vbCrLf & "A backup is made first. Close the drawing in AutoCAD.", _
     vbYesNo+vbQuestion, "DM Setup: {job}") <> vbYes Then WScript.Quit 0
 
@@ -277,17 +318,44 @@ Function RowExists(tbl, nm)
   RowExists = (r(0).Value > 0) : r.Close
 End Function
 
+' Overwrite (or insert) a project-level setting in tblGlobal.
+Sub SetGlobalText(k, v)
+  Dim c, gix : On Error Resume Next : Err.Clear
+  c = conn.Execute("SELECT COUNT(*) FROM tblGlobal WHERE sKey='" & Replace(k,"'","''") & "'")(0).Value
+  If c > 0 Then
+    conn.Execute "UPDATE tblGlobal SET bNumeric=0, sText='" & Replace(v,"'","''") & "' WHERE sKey='" & Replace(k,"'","''") & "'"
+  Else
+    gix = NextIx("tblGlobal","ixGlobal")
+    conn.Execute "INSERT INTO tblGlobal (ixGlobal,sKey,bNumeric,sText) VALUES (" & gix & ",'" & Replace(k,"'","''") & "',0,'" & Replace(v,"'","''") & "')"
+  End If
+  If Err.Number=0 Then nSet=nSet+1 : logf.WriteLine "SET tblGlobal  " & k & " = " & v Else nErr=nErr+1 : logf.WriteLine "ERR tblGlobal  " & k & " [" & Err.Number & "] " & Err.Description : Err.Clear
+End Sub
+
+Sub SetGlobalNum(k, v)
+  Dim c, gix : On Error Resume Next : Err.Clear
+  c = conn.Execute("SELECT COUNT(*) FROM tblGlobal WHERE sKey='" & Replace(k,"'","''") & "'")(0).Value
+  If c > 0 Then
+    conn.Execute "UPDATE tblGlobal SET bNumeric=1, dNumber=" & v & " WHERE sKey='" & Replace(k,"'","''") & "'"
+  Else
+    gix = NextIx("tblGlobal","ixGlobal")
+    conn.Execute "INSERT INTO tblGlobal (ixGlobal,sKey,bNumeric,dNumber) VALUES (" & gix & ",'" & Replace(k,"'","''") & "',1," & v & ")"
+  End If
+  If Err.Number=0 Then nSet=nSet+1 : logf.WriteLine "SET tblGlobal  " & k & " = " & v Else nErr=nErr+1 : logf.WriteLine "ERR tblGlobal  " & k & " [" & Err.Number & "] " & Err.Description : Err.Clear
+End Sub
+
 On Error Resume Next
+{globals}
 {blocks}
 On Error GoTo 0
 
 conn.Close
 logf.WriteLine "--------------------------------------------------"
-logf.WriteLine "Inserted " & nIns & ", Skipped " & nSkip & ", Errors " & nErr
+logf.WriteLine "Inserted " & nIns & ", Skipped " & nSkip & ", Settings " & nSet & ", Errors " & nErr
 logf.Close
 MsgBox "Done." & vbCrLf & _
   "Inserted: " & nIns & vbCrLf & _
   "Skipped (already present): " & nSkip & vbCrLf & _
+  "Settings updated: " & nSet & vbCrLf & _
   "Errors: " & nErr & vbCrLf & vbCrLf & _
   "Log: " & fso.GetParentFolderName(dmFile) & "\dm_setup_log.txt" & vbCrLf & _
   "Backup: " & dmFile & ".setup_backup.bak", vbInformation, "DM Setup complete"
