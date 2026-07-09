@@ -2330,17 +2330,33 @@ def _dm_setup_construction(report: dict, meta: dict) -> dict:
     }
 
 
+def _dm_setup_job(job_id: str):
+    """Resolve (job_path, meta, report, parsed) for the DM Setup tab. Works even
+    when the project has no workspace/HTML yet — falls back to the live Wix record
+    exactly like job_star, so the tab opens straight from the work order."""
+    job_path = _safe_job_path(job_id)
+    if job_path.exists():
+        return job_path, _load_meta(job_id), _load_report(job_id), _is_parsed(job_path)
+    record = wix_client.get_project(job_id)
+    if not record:
+        abort(404)
+    meta = {
+        "wix_item_id": job_id,
+        "wix_snapshot": record,
+        "project_name": (record.get("title") or "").strip() or job_id,
+        "project_address": (record.get("projectAddress") or "").strip(),
+    }
+    return job_path, meta, {}, False
+
+
 @app.route("/job/<job_id>/dm-setup")
 @_require_auth
 def job_dm_setup(job_id: str):
-    # Available alongside the work order — no parsed report required. report may be {}.
-    _job_dir(job_id)
-    meta = _load_meta(job_id)
-    report = _load_report(job_id)
-
     if not HAS_DM_SETUP_GENERATOR:
         flash(f"DM Setup generator unavailable: {_DM_SETUP_IMPORT_ERROR}")
-        return redirect(url_for("results", job_id=job_id))
+        return redirect(url_for("job_star", job_id=job_id))
+    # Works with just the work order — no workspace/HTML required.
+    _job_path, meta, report, parsed = _dm_setup_job(job_id)
 
     library = dmsg.list_room_types()                       # [{name, source, summary}]
     lib_names = {rt["name"] for rt in library}
@@ -2363,7 +2379,7 @@ def job_dm_setup(job_id: str):
     return render_template(
         "job_dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
-        parsed=_is_parsed(_job_dir(job_id)),
+        parsed=parsed,
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,
     )
@@ -2372,13 +2388,10 @@ def job_dm_setup(job_id: str):
 @app.route("/job/<job_id>/dm-setup/generate", methods=["POST"])
 @_require_auth
 def job_dm_setup_generate(job_id: str):
-    job_dir = _job_dir(job_id)
-    meta = _load_meta(job_id)
-    report = _load_report(job_id)
-
     if not HAS_DM_SETUP_GENERATOR:
         flash(f"DM Setup generator unavailable: {_DM_SETUP_IMPORT_ERROR}")
-        return redirect(url_for("results", job_id=job_id))
+        return redirect(url_for("job_star", job_id=job_id))
+    job_path, meta, _report, _parsed = _dm_setup_job(job_id)
 
     selected = request.form.getlist("room_types")
     errors: list[str] = []
@@ -2436,11 +2449,6 @@ def job_dm_setup_generate(job_id: str):
         flash("Select at least one room type or construction type to generate a setup script.")
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    # Persist the room-type selection so it repopulates on the next visit.
-    # (Construction rows re-prefill from Wix/.dm on each load.)
-    meta["dm_setup_inputs"] = {"selected_room_types": selected}
-    _save_meta(job_id, meta)
-
     try:
         vbs = dmsg.render_setup_vbs(
             meta.get("project_name") or job_id, selected,
@@ -2452,16 +2460,21 @@ def job_dm_setup_generate(job_id: str):
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
     safe = secure_filename(meta.get("project_name") or job_id) or "job"
-    out_path = job_dir / "out" / f"{safe}-DM-Setup.vbs"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(vbs, encoding="utf-8")
+    fname = f"{safe}-DM-Setup.vbs"
 
-    return send_file(
-        out_path,
-        as_attachment=True,
-        download_name=out_path.name,
-        mimetype="text/vbscript",
-    )
+    if job_path.exists():
+        # Existing workspace: persist the artifact + the room-type selection.
+        meta["dm_setup_inputs"] = {"selected_room_types": selected}
+        _save_meta(job_id, meta)
+        out_path = job_path / "out" / fname
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(vbs, encoding="utf-8")
+        return send_file(out_path, as_attachment=True,
+                         download_name=fname, mimetype="text/vbscript")
+
+    # No workspace yet (CMS project, no HTML) — stream without materializing the job.
+    return send_file(io.BytesIO(vbs.encode("utf-8")), as_attachment=True,
+                     download_name=fname, mimetype="text/vbscript")
 
 
 # ─── Routes: Equipment Selection tab ─────────────────────────────────
