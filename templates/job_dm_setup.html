@@ -63,57 +63,69 @@
     {% endfor %}
   </section>
 
-  {# ── Construction types (rows from the .dm export, specs prefilled from Wix) ── #}
+  {# ── Construction types (prefilled from .dm/Wix; add & remove freely) ── #}
+  {% macro src_badge(s) %}{% if s %}<span class="src src-{{ s|lower|replace('.','') }}">{{ s }}</span>{% endif %}{% endmacro %}
+
+  {# One opaque (wall/roof/door) row. i = row index; used in field names. #}
+  {% macro orow(cat, i, name, u, u_src, dark, dark_src, options) %}
+    <div class="con-row">
+      <input type="hidden" name="{{ cat }}_include" value="{{ i }}">
+      <button type="button" class="con-del" onclick="delConRow(this)" title="Remove" aria-label="Remove">&times;</button>
+      <input type="text" name="{{ cat }}_name_{{ i }}" value="{{ name }}" class="con-name" placeholder="Type name" aria-label="Name">
+      <span class="con-field">U <input type="number" step="0.001" min="0" name="{{ cat }}_u_{{ i }}" value="{{ u }}" class="con-u">{{ src_badge(u_src) }}</span>
+      <select name="{{ cat }}_type_{{ i }}" class="con-type" aria-label="Mass class">
+        <option value="">&mdash; mass class &mdash;</option>
+        {% for label, code in options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+      </select>
+      <label class="checkbox con-dark"><input type="checkbox" name="{{ cat }}_dark_{{ i }}" {{ 'checked' if dark }}> dark{{ src_badge(dark_src) }}</label>
+    </div>
+  {% endmacro %}
+
+  {# One glass row. #}
+  {% macro grow(i, name, u, u_src, shgc, shgc_src) %}
+    <div class="con-row">
+      <input type="hidden" name="glass_include" value="{{ i }}">
+      <button type="button" class="con-del" onclick="delConRow(this)" title="Remove" aria-label="Remove">&times;</button>
+      <input type="text" name="glass_name_{{ i }}" value="{{ name }}" class="con-name" placeholder="Type name" aria-label="Name">
+      <span class="con-field">U <input type="number" step="0.001" min="0" name="glass_u_{{ i }}" value="{{ u }}" class="con-u">{{ src_badge(u_src) }}</span>
+      <span class="con-field">SHGC <input type="number" step="0.01" min="0" max="1" name="glass_shgc_{{ i }}" value="{{ shgc }}" class="con-u">{{ src_badge(shgc_src) }}</span>
+    </div>
+  {% endmacro %}
+
   <section>
     <h3 style="margin-top:0;">Construction types
-      <span class="muted" style="font-size:.85rem; font-weight:400;">rows from the Design Master export</span></h3>
+      <span class="muted" style="font-size:.85rem; font-weight:400;">walls, roofs, doors &amp; glass written into the script</span></h3>
     <p class="muted" style="margin:.2rem 0 .6rem;">
       Specs are prefilled from the {% if from_wix %}Wix work-order (<span class="src src-wix">Wix</span>){% else %}job export{% endif %}
       where available (<span class="src src-dm">.dm</span> = from the export, blank = enter manually).
       Pick a <strong>mass class</strong> for each opaque type — it isn't stored in Wix.
-      Uncheck any type you don't want written.
+      Use <strong>Add</strong> to create a type and <strong>&times;</strong> to remove one; only the rows shown are written to the script.
     </p>
 
-    {% macro src_badge(s) %}{% if s %}<span class="src src-{{ s|lower|replace('.','') }}">{{ s }}</span>{% endif %}{% endmacro %}
-
-    {% macro opaque(title, cat, items) %}
-      <h4 style="margin:.9rem 0 .3rem;">{{ title }}</h4>
-      {% if items %}
-        {% for c in items %}
-        <div class="con-row">
-          <label class="checkbox con-inc"><input type="checkbox" name="{{ cat }}_include" value="{{ loop.index0 }}" checked></label>
-          <input type="text" name="{{ cat }}_name_{{ loop.index0 }}" value="{{ c.name }}" class="con-name" aria-label="Name">
-          <span class="con-field">U <input type="number" step="0.001" min="0" name="{{ cat }}_u_{{ loop.index0 }}" value="{{ c.u }}" class="con-u">{{ src_badge(c.u_source) }}</span>
-          <select name="{{ cat }}_type_{{ loop.index0 }}" class="con-type" aria-label="Mass class">
-            <option value="">— mass class —</option>
-            {% for label, code in c.options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
-          </select>
-          <label class="checkbox con-dark"><input type="checkbox" name="{{ cat }}_dark_{{ loop.index0 }}" {{ 'checked' if c.dark }}> dark{{ src_badge(c.dark_source) }}</label>
-        </div>
-        {% endfor %}
-      {% else %}
-        <p class="muted" style="margin:.2rem 0 0;">None in the export.</p>
-      {% endif %}
-    {% endmacro %}
-
-    {{ opaque("Wall types", "wall", walls) }}
-    {{ opaque("Roof types", "roof", roofs) }}
-    {{ opaque("Door types", "door", doors) }}
-
-    <h4 style="margin:.9rem 0 .3rem;">Glass types</h4>
-    {% if glasses %}
-      {% for c in glasses %}
-      <div class="con-row">
-        <label class="checkbox con-inc"><input type="checkbox" name="glass_include" value="{{ loop.index0 }}" checked></label>
-        <input type="text" name="glass_name_{{ loop.index0 }}" value="{{ c.name }}" class="con-name" aria-label="Name">
-        <span class="con-field">U <input type="number" step="0.001" min="0" name="glass_u_{{ loop.index0 }}" value="{{ c.u }}" class="con-u">{{ src_badge(c.u_source) }}</span>
-        <span class="con-field">SHGC <input type="number" step="0.01" min="0" max="1" name="glass_shgc_{{ loop.index0 }}" value="{{ c.shgc }}" class="con-u">{{ src_badge(c.shgc_source) }}</span>
+    {% for cat, title, items in [('wall','Wall types', walls), ('roof','Roof types', roofs), ('door','Door types', doors)] %}
+    <div class="con-cat">
+      <h4>{{ title }}</h4>
+      <div id="rows-{{ cat }}" class="con-rows">
+        {% for c in items %}{{ orow(cat, loop.index0, c.name, c.u, c.u_source, c.dark, c.dark_source, c.options) }}{% endfor %}
       </div>
-      {% endfor %}
-    {% else %}
-      <p class="muted" style="margin:.2rem 0 0;">None in the export.</p>
-    {% endif %}
+      <button type="button" class="con-add" onclick="addConRow('{{ cat }}')">＋ Add {{ cat }} type</button>
+    </div>
+    {% endfor %}
+
+    <div class="con-cat">
+      <h4>Glass types</h4>
+      <div id="rows-glass" class="con-rows">
+        {% for c in glasses %}{{ grow(loop.index0, c.name, c.u, c.u_source, c.shgc, c.shgc_source) }}{% endfor %}
+      </div>
+      <button type="button" class="con-add" onclick="addConRow('glass')">＋ Add glass type</button>
+    </div>
   </section>
+
+  {# Blank-row templates cloned by "Add"; __I__ is replaced with a fresh index. #}
+  <template id="tpl-wall">{{ orow('wall', '__I__', '', '', '', False, '', mass_options['wall']) }}</template>
+  <template id="tpl-roof">{{ orow('roof', '__I__', '', '', '', False, '', mass_options['roof']) }}</template>
+  <template id="tpl-door">{{ orow('door', '__I__', '', '', '', False, '', mass_options['door']) }}</template>
+  <template id="tpl-glass">{{ grow('__I__', '', '', '', '', '') }}</template>
 
   <div class="submit-row">
     <button type="submit" class="primary">Generate &amp; download .vbs</button>
@@ -138,8 +150,14 @@
 .warnbadge { background:#8a5a00; }
 
 /* ── Construction rows ── */
+.con-cat { margin:.6rem 0 1rem; }
+.con-cat h4 { margin:.2rem 0 .3rem; }
+.con-rows:empty::after { content:"None yet — use Add below."; color:#888; font-size:.85rem; }
 .con-row { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; padding:.25rem 0; border-bottom:1px solid #f0f0f0; }
-.con-inc { margin:0; }
+.con-del { border:none; background:#f3d6d6; color:#8a1c1c; font-size:1rem; line-height:1; width:1.4rem; height:1.4rem; border-radius:4px; cursor:pointer; padding:0; }
+.con-del:hover { background:#e5b0b0; }
+.con-add { margin-top:.4rem; background:#eef3f9; color:#0c447c; border:1px solid #ccd9e8; border-radius:5px; padding:.3rem .7rem; font-size:.85rem; cursor:pointer; }
+.con-add:hover { background:#e0eaf5; }
 .con-name { flex:1 1 14rem; min-width:10rem; padding:.25rem .4rem; }
 .con-field { display:inline-flex; align-items:center; gap:.25rem; font-size:.85rem; color:#555; }
 .con-u { width:6rem; padding:.25rem .4rem; }
@@ -174,6 +192,28 @@ function toggleGroup(master) {
     const cb = item.querySelector('input[type=checkbox]');
     if (cb && !cb.disabled) cb.checked = master.checked;
   });
+}
+
+// ── Construction rows: add / delete ──
+// Monotonic per-category counter starts above the server-rendered rows so new
+// indices never collide with existing ones (even after deletions).
+const conCount = { wall: {{ walls|length }}, roof: {{ roofs|length }}, door: {{ doors|length }}, glass: {{ glasses|length }} };
+
+function addConRow(cat) {
+  const i = conCount[cat]++;
+  const tpl = document.getElementById('tpl-' + cat);
+  const html = tpl.innerHTML.split('__I__').join(i);   // fill in this row's index
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html.trim();
+  const row = wrap.firstElementChild;
+  document.getElementById('rows-' + cat).appendChild(row);
+  const nameInput = row.querySelector('.con-name');
+  if (nameInput) nameInput.focus();
+}
+
+function delConRow(btn) {
+  const row = btn.closest('.con-row');
+  if (row) row.remove();
 }
 </script>
 
