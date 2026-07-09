@@ -2379,7 +2379,7 @@ def job_dm_setup(job_id: str):
     return render_template(
         "job_dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
-        parsed=parsed,
+        parsed=parsed, mass_options=_MASS_CLASS_OPTIONS,
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,
     )
