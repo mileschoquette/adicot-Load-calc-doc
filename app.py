@@ -2494,6 +2494,19 @@ def job_dm_setup_generate(job_id: str):
         out_path = job_path / "out" / fname
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(vbs, encoding="utf-8")
+        # Second output: the load-calc payload (same selection), persisted in the
+        # job workspace for the Load Calc tab / review UI to read. Same inputs as
+        # the .vbs, so the two never diverge. Non-fatal if it can't be written.
+        try:
+            payload = dmsg.render_setup_json(
+                proj_name, selected,
+                wall_types=walls, glass_types=glasses,
+                roof_types=roofs, door_types=doors,
+                project_settings=project_settings,
+            )
+            (job_path / "loadcalc_input.json").write_text(payload, encoding="utf-8")
+        except Exception as e:
+            app.logger.warning("loadcalc_input.json not written for %s: %s", job_id, e)
         return send_file(out_path, as_attachment=True,
                          download_name=fname, mimetype="text/vbscript")
 
