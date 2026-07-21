@@ -2484,35 +2484,43 @@ def job_dm_setup_generate(job_id: str):
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
     safe = secure_filename(proj_name) or "job"
-    fname = f"{safe}-DM-Setup.vbs"
+    vbs_name = f"{safe}-DM-Setup.vbs"
+    json_name = f"{safe}-loadcalc.json"
+
+    # Second output: the load-calc payload (same selection), for Adicot's own
+    # RTS calc / review UI. Same inputs as the .vbs, so the two never diverge.
+    try:
+        payload = dmsg.render_setup_json(
+            proj_name, selected,
+            wall_types=walls, glass_types=glasses,
+            roof_types=roofs, door_types=doors,
+            project_settings=project_settings,
+        )
+    except KeyError as e:
+        flash(f"Could not generate load-calc file: {e}")
+        return redirect(url_for("job_dm_setup", job_id=job_id))
 
     if job_path.exists():
-        # Existing workspace: persist the artifact + the selection & settings.
+        # Existing workspace: persist both artifacts + the selection & settings.
         meta["dm_setup_inputs"] = {"selected_room_types": selected,
                                    "project_settings": project_settings}
         _save_meta(job_id, meta)
-        out_path = job_path / "out" / fname
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(vbs, encoding="utf-8")
-        # Second output: the load-calc payload (same selection), persisted in the
-        # job workspace for the Load Calc tab / review UI to read. Same inputs as
-        # the .vbs, so the two never diverge. Non-fatal if it can't be written.
-        try:
-            payload = dmsg.render_setup_json(
-                proj_name, selected,
-                wall_types=walls, glass_types=glasses,
-                roof_types=roofs, door_types=doors,
-                project_settings=project_settings,
-            )
-            (job_path / "loadcalc_input.json").write_text(payload, encoding="utf-8")
-        except Exception as e:
-            app.logger.warning("loadcalc_input.json not written for %s: %s", job_id, e)
-        return send_file(out_path, as_attachment=True,
-                         download_name=fname, mimetype="text/vbscript")
+        out_dir = job_path / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / vbs_name).write_text(vbs, encoding="utf-8")
+        # Stable name in the job root so the Load Calc tab can find it later.
+        (job_path / "loadcalc_input.json").write_text(payload, encoding="utf-8")
 
-    # No workspace yet (CMS project, no HTML) — stream without materializing the job.
-    return send_file(io.BytesIO(vbs.encode("utf-8")), as_attachment=True,
-                     download_name=fname, mimetype="text/vbscript")
+    # Deliver BOTH files in one download so the engineer gets the DM script and
+    # the load-calc input together.
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(vbs_name, vbs)
+        z.writestr(json_name, payload)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name=f"{safe}-DM-Setup.zip", mimetype="application/zip")
 
 
 # ─── Routes: Equipment Selection tab ─────────────────────────────────
