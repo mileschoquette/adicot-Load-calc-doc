@@ -44,11 +44,81 @@
         <input type="number" step="1" id="ps_osa_low_dry" name="ps_osa_low_dry" value="{{ settings.osa_low_dry }}">
       </div>
       <div class="field">
-        <label for="ps_osa_daily_range">OSA daily range (°F)</label>
+        <label for="ps_osa_daily_range">Mean daily dry-bulb range (°F)</label>
         <input type="number" step="1" id="ps_osa_daily_range" name="ps_osa_daily_range" value="{{ settings.osa_daily_range }}">
+      </div>
+      <div class="field">
+        <label for="ps_cooling_design_month">Cooling design month</label>
+        <select id="ps_cooling_design_month" name="ps_cooling_design_month">
+          <option value="">—</option>
+          {% for m in ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
+          <option value="{{ loop.index }}" {% if settings.cooling_design_month|string == loop.index|string %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="ps_cooling_design_db">Cooling design dry-bulb (°F)</label>
+        <input type="number" step="1" id="ps_cooling_design_db" name="ps_cooling_design_db" value="{{ settings.cooling_design_db }}">
+      </div>
+      <div class="field">
+        <label for="ps_cooling_design_wb">Mean coincident wet-bulb (°F)</label>
+        <input type="number" step="1" id="ps_cooling_design_wb" name="ps_cooling_design_wb" value="{{ settings.cooling_design_wb }}">
+      </div>
+      <div class="field">
+        <label for="ps_cooling_design_percentile">Cooling design percentile</label>
+        <select id="ps_cooling_design_percentile" name="ps_cooling_design_percentile">
+          <option value="">—</option>
+          {% for p in ["0.4%", "1%", "2%"] %}
+          <option value="{{ p }}" {% if settings.cooling_design_percentile == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="ps_heating_design_percentile">Heating design percentile</label>
+        <select id="ps_heating_design_percentile" name="ps_heating_design_percentile">
+          <option value="">—</option>
+          {% for p in ["99.6%", "99%"] %}
+          <option value="{{ p }}" {% if settings.heating_design_percentile == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
     <p class="muted" style="margin:.5rem 0 0;">The script targets the <code>dm_hvac*.dm</code> in the job folder and does not rename the file.</p>
+  </section>
+
+  {# ── Site & solar data (NOT written to the .dm — Design Master has no field for #}
+  {# these; ASHRAE Ch.14 values kept for the app's own records / load-calc payload) #}
+  <section>
+    <h3 style="margin-top:0;">Site &amp; solar data
+      <span class="muted" style="font-size:.85rem; font-weight:400;">saved to this job only — Design Master has no field for these</span></h3>
+    <p class="muted" style="margin:.2rem 0 .6rem;">
+      Design Master's own schema (and HTML export) only carries latitude, elevation, heating/cooling
+      design dry-bulb, mean coincident wet-bulb, and mean daily range — the fields above. It has no
+      longitude, standard meridian, dehumidification humidity ratio, or clear-sky τ<sub>b</sub>/τ<sub>d</sub>
+      fields, so these are kept here for the app's own solar/psychrometric calculations only.
+    </p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="ps_longitude">Longitude (°)</label>
+        <input type="number" step="0.01" id="ps_longitude" name="ps_longitude" value="{{ settings.longitude }}">
+      </div>
+      <div class="field">
+        <label for="ps_standard_meridian">Standard meridian (°, e.g. -75 for Eastern)</label>
+        <input type="number" step="1" id="ps_standard_meridian" name="ps_standard_meridian" value="{{ settings.standard_meridian }}">
+      </div>
+      <div class="field">
+        <label for="ps_dehumid_humidity_ratio">Dehumidification design humidity ratio (grains/lb, 1%)</label>
+        <input type="number" step="0.1" id="ps_dehumid_humidity_ratio" name="ps_dehumid_humidity_ratio" value="{{ settings.dehumid_humidity_ratio }}">
+      </div>
+      <div class="field">
+        <label for="ps_clear_sky_taub">Clear-sky τ<sub>b</sub></label>
+        <input type="number" step="0.001" id="ps_clear_sky_taub" name="ps_clear_sky_taub" value="{{ settings.clear_sky_taub }}">
+      </div>
+      <div class="field">
+        <label for="ps_clear_sky_taud">Clear-sky τ<sub>d</sub></label>
+        <input type="number" step="0.001" id="ps_clear_sky_taud" name="ps_clear_sky_taud" value="{{ settings.clear_sky_taud }}">
+      </div>
+    </div>
   </section>
 
   {# ── Room types ─────────────────────────────────────────────────── #}
