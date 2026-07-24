@@ -175,14 +175,42 @@ def _insert_block(table: str, ix_col: str, name: str, cols_sql: str,
 
 # Editable project-level settings (tblGlobal key/value). friendly field -> (sKey, is_numeric).
 # Writing these overwrites the DM project (e.g. renames it / sets the weather station).
+# Confirmed against a real dm_hvac.dm (mdb-schema/mdb-export, see dm_schema_findings.md)
+# AND independently against hvac_pipeline's own DM-HTML-export parser (ProjectInfo
+# fields osa_low_f/osa_daily_range_f/latitude_deg/elevation_ft) — DM's data model
+# genuinely has no fields beyond these six for the weather station itself.
 PROJECT_SETTING_KEYS = {
     "project_name":    ("bldg-name", False),
     "weather_station": ("bldg-city", False),
     "latitude":        ("bldg-latitude", True),
     "elevation":       ("bldg-elevation", True),
-    "osa_low_dry":     ("bldg-osaLowDry", True),
-    "osa_daily_range": ("bldg-osaDailyRange", True),
+    "osa_low_dry":     ("bldg-osaLowDry", True),   # heating design dry-bulb
+    "osa_daily_range": ("bldg-osaDailyRange", True),  # mean daily dry-bulb range
 }
+
+# Cooling design condition: DM has no single tblGlobal field for this. Instead it
+# keeps one row per calendar month in tblMonth (iOsaHighDry, iOsaHighWet,
+# bDoCalculation), with exactly one month flagged as the design month — mirrored
+# by a bldg-calculateMonth<0-11> Yes/No flag per month in tblGlobal. Rendered as
+# a SetCoolingMonth call (see _cooling_month_calls / the .vbs template), not
+# through the plain tblGlobal key/value path above.
+COOLING_MONTH_FIELDS = ("cooling_design_month", "cooling_design_db", "cooling_design_wb")
+
+# Fields the user needs for a full ASHRAE design-day/solar model, but which have
+# NO home anywhere in Design Master's schema (confirmed against both the real
+# .dm and DM's own HTML export — neither exposes longitude, standard meridian,
+# a dehumidification humidity ratio, or clear-sky tau_b/tau_d). These are still
+# collected and saved to the job's meta.json / load-calc payload for the app's
+# own use; they are never written into the .dm.
+SITE_ONLY_FIELDS = (
+    "longitude", "standard_meridian",
+    "heating_design_percentile", "cooling_design_percentile",
+    "dehumid_humidity_ratio", "clear_sky_taub", "clear_sky_taud",
+)
+
+# Full set of `ps_<field>` inputs the DM Setup form may submit (superset of
+# PROJECT_SETTING_KEYS — used by app.py to know which fields to collect).
+ALL_SETTING_FIELDS = tuple(PROJECT_SETTING_KEYS) + COOLING_MONTH_FIELDS + SITE_ONLY_FIELDS
 
 
 def _global_calls(project_settings: dict | None) -> tuple[str, int]:
@@ -207,6 +235,29 @@ def _global_calls(project_settings: dict | None) -> tuple[str, int]:
         else:
             lines.append(f"  SetGlobalText {_vbs_str(key)}, {_vbs_str(str(val))}")
     return "\n".join(lines), len(lines)
+
+
+def _cooling_month_calls(project_settings: dict | None) -> tuple[str, int]:
+    """Build the SetCoolingMonth VBS call from cooling_design_month/db/wb, if all
+    three are present and valid. Returns ("", 0) otherwise (nothing to write —
+    a design month with no DB/WB, or vice versa, can't be applied safely)."""
+    if not project_settings:
+        return "", 0
+    month = project_settings.get("cooling_design_month")
+    db = project_settings.get("cooling_design_db")
+    wb = project_settings.get("cooling_design_wb")
+    if month in (None, "") or db in (None, "") or wb in (None, ""):
+        return "", 0
+    try:
+        m = int(float(month))
+        d, w = float(db), float(wb)
+    except (TypeError, ValueError):
+        return "", 0
+    if not (1 <= m <= 12):
+        return "", 0
+    d = int(d) if d == int(d) else d
+    w = int(w) if w == int(w) else w
+    return f"  SetCoolingMonth {m}, {d}, {w}", 1
 
 
 def render_setup_vbs(
@@ -262,6 +313,10 @@ def render_setup_vbs(
     n_room = sum(1 for _ in room_type_names)
     indented = "\n\n".join("  " + b.replace("\n", "\n  ") for b in blocks)
     globals_vbs, n_set = _global_calls(project_settings)
+    cool_vbs, n_cool = _cooling_month_calls(project_settings)
+    if cool_vbs:
+        globals_vbs = f"{globals_vbs}\n{cool_vbs}" if globals_vbs else cool_vbs
+        n_set += n_cool
     safe_job = str(job_name).replace('"', "'")
 
     return _TEMPLATE.format(job=safe_job, n_con=n_con, n_room=n_room, n_set=n_set,
@@ -381,6 +436,29 @@ Sub SetGlobalNum(k, v)
     conn.Execute "INSERT INTO tblGlobal (ixGlobal,sKey,bNumeric,dNumber) VALUES (" & gix & ",'" & Replace(k,"'","''") & "',1," & v & ")"
   End If
   If Err.Number=0 Then nSet=nSet+1 : logf.WriteLine "SET tblGlobal  " & k & " = " & v Else nErr=nErr+1 : logf.WriteLine "ERR tblGlobal  " & k & " [" & Err.Number & "] " & Err.Description : Err.Clear
+End Sub
+
+' Set the cooling design condition. DM keeps one tblMonth row per calendar
+' month (iMonth is 0-based); m is the 1-12 calendar month passed in. Only the
+' selected month is flagged bDoCalculation=1 (mirrors bldg-calculateMonth<0-11>
+' in tblGlobal, which the real .dm file also keeps in sync with exactly one
+' month flagged).
+Sub SetCoolingMonth(m, dry, wet)
+  Dim i, flag : On Error Resume Next : Err.Clear
+  conn.Execute "UPDATE tblMonth SET iOsaHighDry=" & dry & ", iOsaHighWet=" & wet & ", bDoCalculation=1 WHERE iMonth=" & (m-1)
+  If Err.Number=0 Then
+    For i = 0 To 11
+      If i <> (m-1) Then conn.Execute "UPDATE tblMonth SET bDoCalculation=0 WHERE iMonth=" & i
+    Next
+    For i = 0 To 11
+      If i = (m-1) Then flag = "YES" Else flag = "NO"
+      SetGlobalText "bldg-calculateMonth" & i, flag
+    Next
+    nSet=nSet+1 : logf.WriteLine "SET tblMonth  month=" & m & "  dry=" & dry & " wet=" & wet
+  Else
+    nErr=nErr+1 : logf.WriteLine "ERR tblMonth  [" & Err.Number & "] " & Err.Description & "  (month=" & m & ")"
+    Err.Clear
+  End If
 End Sub
 
 On Error Resume Next

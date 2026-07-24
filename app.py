@@ -2349,15 +2349,44 @@ def _dm_setup_job(job_id: str):
     return job_path, meta, {}, False
 
 
-def _dm_setup_settings(meta: dict) -> dict:
-    """Prefill for the editable project settings (bldg-name / bldg-city / weather
-    numerics), from the work order, overlaid with any previously saved values."""
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December")
+
+
+def _dm_setup_settings(meta: dict, report: dict | None = None) -> dict:
+    """Prefill for the editable project settings. Fields DM actually has a home
+    for (bldg-name/city/latitude/elevation/osaLowDry/osaDailyRange, plus the
+    tblMonth cooling design condition) are prefilled from the parsed .dm export
+    (report.json) when available, else the work order; overlaid with any
+    previously saved values. The remaining site/solar fields (longitude,
+    standard meridian, dehumidification humidity ratio, clear-sky tau) have no
+    DM field at all — they only ever come from a prior save."""
     snap = meta.get("wix_snapshot") or {}
+    proj = (report or {}).get("project") or {}
+
+    month_name = proj.get("osa_high_month") or ""
+    month_num = ""
+    if month_name in _MONTH_NAMES:
+        month_num = str(_MONTH_NAMES.index(month_name) + 1)
+
     ps = {
         "project_name": meta.get("project_name") or snap.get("title") or "",
-        "weather_station": snap.get("weatherData") or snap.get("weatherStation") or "",
-        "latitude": "", "elevation": "", "osa_low_dry": "", "osa_daily_range": "",
+        "weather_station": (snap.get("weatherData") or snap.get("weatherStation")
+                             or proj.get("project_location") or ""),
+        "latitude": proj.get("latitude_deg", ""),
+        "elevation": proj.get("elevation_ft", ""),
+        "osa_low_dry": proj.get("osa_low_f", ""),
+        "osa_daily_range": proj.get("osa_daily_range_f", ""),
+        "cooling_design_month": month_num,
+        "cooling_design_db": proj.get("osa_high_db_f", ""),
+        "cooling_design_wb": proj.get("osa_high_wb_f", ""),
+        "longitude": "", "standard_meridian": "",
+        "heating_design_percentile": "", "cooling_design_percentile": "",
+        "dehumid_humidity_ratio": "", "clear_sky_taub": "", "clear_sky_taud": "",
     }
+    for k, v in list(ps.items()):
+        if v is None:
+            ps[k] = ""
     saved = (meta.get("dm_setup_inputs") or {}).get("project_settings") or {}
     for k, v in saved.items():
         if v not in (None, ""):
@@ -2396,7 +2425,7 @@ def job_dm_setup(job_id: str):
         "job_dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
         parsed=parsed, mass_options=_MASS_CLASS_OPTIONS,
-        settings=_dm_setup_settings(meta),
+        settings=_dm_setup_settings(meta, report),
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,
     )
@@ -2457,8 +2486,10 @@ def job_dm_setup_generate(job_id: str):
     doors = read_opaque("door")
     glasses = read_glass()
 
-    # Project settings to overwrite in the .dm (only non-empty fields).
-    project_settings = {f: _f(f"ps_{f}") for f in dmsg.PROJECT_SETTING_KEYS}
+    # Project/site settings — only some of these (dmsg.PROJECT_SETTING_KEYS +
+    # COOLING_MONTH_FIELDS) have a home in the .dm; the rest (SITE_ONLY_FIELDS)
+    # are saved to meta.json / the load-calc payload only. Non-empty fields only.
+    project_settings = {f: _f(f"ps_{f}") for f in dmsg.ALL_SETTING_FIELDS}
     project_settings = {k: v for k, v in project_settings.items() if v}
 
     if errors:
