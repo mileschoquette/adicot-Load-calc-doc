@@ -2330,17 +2330,78 @@ def _dm_setup_construction(report: dict, meta: dict) -> dict:
     }
 
 
+def _dm_setup_job(job_id: str):
+    """Resolve (job_path, meta, report, parsed) for the DM Setup tab. Works even
+    when the project has no workspace/HTML yet — falls back to the live Wix record
+    exactly like job_star, so the tab opens straight from the work order."""
+    job_path = _safe_job_path(job_id)
+    if job_path.exists():
+        return job_path, _load_meta(job_id), _load_report(job_id), _is_parsed(job_path)
+    record = wix_client.get_project(job_id)
+    if not record:
+        abort(404)
+    meta = {
+        "wix_item_id": job_id,
+        "wix_snapshot": record,
+        "project_name": (record.get("title") or "").strip() or job_id,
+        "project_address": (record.get("projectAddress") or "").strip(),
+    }
+    return job_path, meta, {}, False
+
+
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December")
+
+
+def _dm_setup_settings(meta: dict, report: dict | None = None) -> dict:
+    """Prefill for the editable project settings. Fields DM actually has a home
+    for (bldg-name/city/latitude/elevation/osaLowDry/osaDailyRange, plus the
+    tblMonth cooling design condition) are prefilled from the parsed .dm export
+    (report.json) when available, else the work order; overlaid with any
+    previously saved values. The remaining site/solar fields (longitude,
+    standard meridian, dehumidification humidity ratio, clear-sky tau) have no
+    DM field at all — they only ever come from a prior save."""
+    snap = meta.get("wix_snapshot") or {}
+    proj = (report or {}).get("project") or {}
+
+    month_name = proj.get("osa_high_month") or ""
+    month_num = ""
+    if month_name in _MONTH_NAMES:
+        month_num = str(_MONTH_NAMES.index(month_name) + 1)
+
+    ps = {
+        "project_name": meta.get("project_name") or snap.get("title") or "",
+        "weather_station": (snap.get("weatherData") or snap.get("weatherStation")
+                             or proj.get("project_location") or ""),
+        "latitude": proj.get("latitude_deg", ""),
+        "elevation": proj.get("elevation_ft", ""),
+        "osa_low_dry": proj.get("osa_low_f", ""),
+        "osa_daily_range": proj.get("osa_daily_range_f", ""),
+        "cooling_design_month": month_num,
+        "cooling_design_db": proj.get("osa_high_db_f", ""),
+        "cooling_design_wb": proj.get("osa_high_wb_f", ""),
+        "longitude": "", "standard_meridian": "",
+        "heating_design_percentile": "", "cooling_design_percentile": "",
+        "dehumid_humidity_ratio": "", "clear_sky_taub": "", "clear_sky_taud": "",
+    }
+    for k, v in list(ps.items()):
+        if v is None:
+            ps[k] = ""
+    saved = (meta.get("dm_setup_inputs") or {}).get("project_settings") or {}
+    for k, v in saved.items():
+        if v not in (None, ""):
+            ps[k] = v
+    return ps
+
+
 @app.route("/job/<job_id>/dm-setup")
 @_require_auth
 def job_dm_setup(job_id: str):
-    # Available alongside the work order — no parsed report required. report may be {}.
-    _job_dir(job_id)
-    meta = _load_meta(job_id)
-    report = _load_report(job_id)
-
     if not HAS_DM_SETUP_GENERATOR:
         flash(f"DM Setup generator unavailable: {_DM_SETUP_IMPORT_ERROR}")
-        return redirect(url_for("results", job_id=job_id))
+        return redirect(url_for("job_star", job_id=job_id))
+    # Works with just the work order — no workspace/HTML required.
+    _job_path, meta, report, parsed = _dm_setup_job(job_id)
 
     library = dmsg.list_room_types()                       # [{name, source, summary}]
     lib_names = {rt["name"] for rt in library}
@@ -2363,7 +2424,8 @@ def job_dm_setup(job_id: str):
     return render_template(
         "job_dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
-        parsed=_is_parsed(_job_dir(job_id)),
+        parsed=parsed, mass_options=_MASS_CLASS_OPTIONS,
+        settings=_dm_setup_settings(meta, report),
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,
     )
@@ -2372,13 +2434,10 @@ def job_dm_setup(job_id: str):
 @app.route("/job/<job_id>/dm-setup/generate", methods=["POST"])
 @_require_auth
 def job_dm_setup_generate(job_id: str):
-    job_dir = _job_dir(job_id)
-    meta = _load_meta(job_id)
-    report = _load_report(job_id)
-
     if not HAS_DM_SETUP_GENERATOR:
         flash(f"DM Setup generator unavailable: {_DM_SETUP_IMPORT_ERROR}")
-        return redirect(url_for("results", job_id=job_id))
+        return redirect(url_for("job_star", job_id=job_id))
+    job_path, meta, _report, _parsed = _dm_setup_job(job_id)
 
     selected = request.form.getlist("room_types")
     errors: list[str] = []
@@ -2427,41 +2486,72 @@ def job_dm_setup_generate(job_id: str):
     doors = read_opaque("door")
     glasses = read_glass()
 
+    # Project/site settings — only some of these (dmsg.PROJECT_SETTING_KEYS +
+    # COOLING_MONTH_FIELDS) have a home in the .dm; the rest (SITE_ONLY_FIELDS)
+    # are saved to meta.json / the load-calc payload only. Non-empty fields only.
+    project_settings = {f: _f(f"ps_{f}") for f in dmsg.ALL_SETTING_FIELDS}
+    project_settings = {k: v for k, v in project_settings.items() if v}
+
     if errors:
         for e in errors:
             flash(e)
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    if not selected and not (walls or roofs or doors or glasses):
-        flash("Select at least one room type or construction type to generate a setup script.")
+    if not selected and not (walls or roofs or doors or glasses) and not project_settings:
+        flash("Select at least one room type, construction type, or project setting to generate a setup script.")
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    # Persist the room-type selection so it repopulates on the next visit.
-    # (Construction rows re-prefill from Wix/.dm on each load.)
-    meta["dm_setup_inputs"] = {"selected_room_types": selected}
-    _save_meta(job_id, meta)
-
+    # Use the edited project name for the file/dialog if provided.
+    proj_name = project_settings.get("project_name") or meta.get("project_name") or job_id
     try:
         vbs = dmsg.render_setup_vbs(
-            meta.get("project_name") or job_id, selected,
+            proj_name, selected,
             wall_types=walls, glass_types=glasses,
             roof_types=roofs, door_types=doors,
+            project_settings=project_settings,
         )
     except KeyError as e:
         flash(f"Could not generate setup script: {e}")
         return redirect(url_for("job_dm_setup", job_id=job_id))
 
-    safe = secure_filename(meta.get("project_name") or job_id) or "job"
-    out_path = job_dir / "out" / f"{safe}-DM-Setup.vbs"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(vbs, encoding="utf-8")
+    safe = secure_filename(proj_name) or "job"
+    vbs_name = f"{safe}-DM-Setup.vbs"
+    json_name = f"{safe}-loadcalc.json"
 
-    return send_file(
-        out_path,
-        as_attachment=True,
-        download_name=out_path.name,
-        mimetype="text/vbscript",
-    )
+    # Second output: the load-calc payload (same selection), for Adicot's own
+    # RTS calc / review UI. Same inputs as the .vbs, so the two never diverge.
+    try:
+        payload = dmsg.render_setup_json(
+            proj_name, selected,
+            wall_types=walls, glass_types=glasses,
+            roof_types=roofs, door_types=doors,
+            project_settings=project_settings,
+        )
+    except KeyError as e:
+        flash(f"Could not generate load-calc file: {e}")
+        return redirect(url_for("job_dm_setup", job_id=job_id))
+
+    if job_path.exists():
+        # Existing workspace: persist both artifacts + the selection & settings.
+        meta["dm_setup_inputs"] = {"selected_room_types": selected,
+                                   "project_settings": project_settings}
+        _save_meta(job_id, meta)
+        out_dir = job_path / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / vbs_name).write_text(vbs, encoding="utf-8")
+        # Stable name in the job root so the Load Calc tab can find it later.
+        (job_path / "loadcalc_input.json").write_text(payload, encoding="utf-8")
+
+    # Deliver BOTH files in one download so the engineer gets the DM script and
+    # the load-calc input together.
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(vbs_name, vbs)
+        z.writestr(json_name, payload)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name=f"{safe}-DM-Setup.zip", mimetype="application/zip")
 
 
 # ─── Routes: Equipment Selection tab ─────────────────────────────────

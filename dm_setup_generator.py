@@ -157,12 +157,107 @@ def _insert_block(table: str, ix_col: str, name: str, cols_sql: str,
     return (
         f'If Not RowExists("{table}", {_vbs_str(name)}) Then\n'
         f'  ix = NextIx("{table}", "{ix_col}")\n'
-        f'  conn.Execute {sql}\n'
-        f'  If Err.Number=0 Then nIns=nIns+1 Else nErr=nErr+1 : Err.Clear\n'
+        f'  s = {sql}\n'
+        f'  conn.Execute s\n'
+        f'  If Err.Number=0 Then\n'
+        f'    nIns=nIns+1 : logf.WriteLine "OK  {table}  " & ix & "  " & {_vbs_str(name)}\n'
+        f'  Else\n'
+        f'    nErr=nErr+1\n'
+        f'    logf.WriteLine "ERR {table}  [" & Err.Number & "] " & Err.Description\n'
+        f'    logf.WriteLine "    SQL: " & s\n'
+        f'    Err.Clear\n'
+        f'  End If\n'
         f'Else\n'
-        f'  nSkip=nSkip+1\n'
+        f'  nSkip=nSkip+1 : logf.WriteLine "SKIP {table}  (exists)  " & {_vbs_str(name)}\n'
         f'End If'
     )
+
+
+# Editable project-level settings (tblGlobal key/value). friendly field -> (sKey, is_numeric).
+# Writing these overwrites the DM project (e.g. renames it / sets the weather station).
+# Confirmed against a real dm_hvac.dm (mdb-schema/mdb-export, see dm_schema_findings.md)
+# AND independently against hvac_pipeline's own DM-HTML-export parser (ProjectInfo
+# fields osa_low_f/osa_daily_range_f/latitude_deg/elevation_ft) — DM's data model
+# genuinely has no fields beyond these six for the weather station itself.
+PROJECT_SETTING_KEYS = {
+    "project_name":    ("bldg-name", False),
+    "weather_station": ("bldg-city", False),
+    "latitude":        ("bldg-latitude", True),
+    "elevation":       ("bldg-elevation", True),
+    "osa_low_dry":     ("bldg-osaLowDry", True),   # heating design dry-bulb
+    "osa_daily_range": ("bldg-osaDailyRange", True),  # mean daily dry-bulb range
+}
+
+# Cooling design condition: DM has no single tblGlobal field for this. Instead it
+# keeps one row per calendar month in tblMonth (iOsaHighDry, iOsaHighWet,
+# bDoCalculation), with exactly one month flagged as the design month — mirrored
+# by a bldg-calculateMonth<0-11> Yes/No flag per month in tblGlobal. Rendered as
+# a SetCoolingMonth call (see _cooling_month_calls / the .vbs template), not
+# through the plain tblGlobal key/value path above.
+COOLING_MONTH_FIELDS = ("cooling_design_month", "cooling_design_db", "cooling_design_wb")
+
+# Fields the user needs for a full ASHRAE design-day/solar model, but which have
+# NO home anywhere in Design Master's schema (confirmed against both the real
+# .dm and DM's own HTML export — neither exposes longitude, standard meridian,
+# a dehumidification humidity ratio, or clear-sky tau_b/tau_d). These are still
+# collected and saved to the job's meta.json / load-calc payload for the app's
+# own use; they are never written into the .dm.
+SITE_ONLY_FIELDS = (
+    "longitude", "standard_meridian",
+    "heating_design_percentile", "cooling_design_percentile",
+    "dehumid_humidity_ratio", "clear_sky_taub", "clear_sky_taud",
+)
+
+# Full set of `ps_<field>` inputs the DM Setup form may submit (superset of
+# PROJECT_SETTING_KEYS — used by app.py to know which fields to collect).
+ALL_SETTING_FIELDS = tuple(PROJECT_SETTING_KEYS) + COOLING_MONTH_FIELDS + SITE_ONLY_FIELDS
+
+
+def _global_calls(project_settings: dict | None) -> tuple[str, int]:
+    """Build the SetGlobalText/SetGlobalNum VBS calls (and their count) for the
+    non-empty project settings provided."""
+    if not project_settings:
+        return "", 0
+    lines = []
+    for field, (key, is_num) in PROJECT_SETTING_KEYS.items():
+        if field not in project_settings:
+            continue
+        val = project_settings[field]
+        if val is None or (isinstance(val, str) and not val.strip()):
+            continue
+        if is_num:
+            try:
+                f = float(val)
+            except (TypeError, ValueError):
+                continue
+            num = int(f) if f == int(f) else f
+            lines.append(f"  SetGlobalNum {_vbs_str(key)}, {num}")
+        else:
+            lines.append(f"  SetGlobalText {_vbs_str(key)}, {_vbs_str(str(val))}")
+    return "\n".join(lines), len(lines)
+
+
+def _cooling_month_calls(project_settings: dict | None) -> tuple[str, int]:
+    """Build the SetCoolingMonth VBS call from cooling_design_month/db/wb, if all
+    three are present and valid. Returns ("", 0) otherwise (nothing to write —
+    a design month with no DB/WB, or vice versa, can't be applied safely)."""
+    if not project_settings:
+        return "", 0
+    month = project_settings.get("cooling_design_month")
+    db = project_settings.get("cooling_design_db")
+    wb = project_settings.get("cooling_design_wb")
+    if month in (None, "") or db in (None, "") or wb in (None, ""):
+        return "", 0
+    try:
+        m = int(float(month))
+        d, w = float(db), float(wb)
+    except (TypeError, ValueError):
+        return "", 0
+    if not (1 <= m <= 12):
+        return "", 0
+    d = int(d) if d == int(d) else d
+    w = int(w) if w == int(w) else w
+    return f"  SetCoolingMonth {m}, {d}, {w}", 1
 
 
 def render_setup_vbs(
@@ -173,6 +268,7 @@ def render_setup_vbs(
     glass_types: Sequence[dict] = (),
     roof_types: Sequence[dict] = (),
     door_types: Sequence[dict] = (),
+    project_settings: dict | None = None,
     library: dict[str, dict] | None = None,
 ) -> str:
     """Render the setup ``.vbs`` for the selected types.
@@ -181,6 +277,8 @@ def render_setup_vbs(
     Construction-type dicts:
       wall/roof/door: {name, description, u, itype, dark}
       glass:          {name, description, u, shgc}
+    ``project_settings`` (optional) maps PROJECT_SETTING_KEYS fields to values to
+    overwrite in tblGlobal (project name, weather station, weather numerics).
     """
     lib = library or load_room_types()
 
@@ -204,8 +302,8 @@ def render_setup_vbs(
     for t in glass_types:
         vt = [_sql_val(t["name"]), _sql_val(t.get("description", t["name"])),
               _sql_val(t["u"]), _sql_val(t["shgc"])]
-        blocks.append(_insert_block("tblGlassS", "ixGlassS",
-                                    "ixGlassS,sName,sDescription,dU,dSHGC", t["name"], vt))
+        blocks.append(_insert_block("tblGlassS", "ixGlassS", t["name"],
+                                    "ixGlassS,sName,sDescription,dU,dSHGC", vt))
 
     for name in room_type_names:
         blocks.append(_insert_block("tblRoomS", "ixRoomS", name,
@@ -214,9 +312,55 @@ def render_setup_vbs(
     n_con = len(wall_types) + len(glass_types) + len(roof_types) + len(door_types)
     n_room = sum(1 for _ in room_type_names)
     indented = "\n\n".join("  " + b.replace("\n", "\n  ") for b in blocks)
+    globals_vbs, n_set = _global_calls(project_settings)
+    cool_vbs, n_cool = _cooling_month_calls(project_settings)
+    if cool_vbs:
+        globals_vbs = f"{globals_vbs}\n{cool_vbs}" if globals_vbs else cool_vbs
+        n_set += n_cool
     safe_job = str(job_name).replace('"', "'")
 
-    return _TEMPLATE.format(job=safe_job, n_con=n_con, n_room=n_room, blocks=indented)
+    return _TEMPLATE.format(job=safe_job, n_con=n_con, n_room=n_room, n_set=n_set,
+                            globals=globals_vbs, blocks=indented)
+
+
+# --------------------------------------------------------------------------- #
+# Load-calc payload (the SECOND output) — same selection, shaped for Adicot's
+# own RTS load calc + review UI instead of Design Master. Mirrors the
+# render_setup_vbs inputs 1:1, but emits the FULL Room Type records (not just
+# names) so the calc has the ventilation/lighting/people data, and construction
+# types verbatim. One source drives both DM and our engine.
+# --------------------------------------------------------------------------- #
+def build_loadcalc_payload(
+    job_name: str,
+    room_type_names: Iterable[str],
+    *,
+    wall_types: Sequence[dict] = (),
+    glass_types: Sequence[dict] = (),
+    roof_types: Sequence[dict] = (),
+    door_types: Sequence[dict] = (),
+    project_settings: dict | None = None,
+    library: dict[str, dict] | None = None,
+) -> dict:
+    lib = library or load_room_types()
+    unknown = [n for n in room_type_names if n not in lib]
+    if unknown:
+        raise KeyError(f"room types not in library: {unknown}")
+    return {
+        "job": str(job_name),
+        "project_settings": dict(project_settings or {}),
+        "room_types": [lib[n] for n in room_type_names],
+        "wall_types": [dict(t) for t in wall_types],
+        "roof_types": [dict(t) for t in roof_types],
+        "door_types": [dict(t) for t in door_types],
+        "glass_types": [dict(t) for t in glass_types],
+    }
+
+
+def render_setup_json(job_name: str, room_type_names: Iterable[str], **kwargs) -> str:
+    """JSON string of build_loadcalc_payload — the load-calc counterpart to
+    render_setup_vbs. Same args, so a route can render both from one selection."""
+    return json.dumps(build_loadcalc_payload(job_name, room_type_names, **kwargs),
+                      indent=2)
 
 
 _TEMPLATE = r'''' Design Master setup script for: {job}
@@ -224,8 +368,8 @@ _TEMPLATE = r'''' Design Master setup script for: {job}
 ' AutoCAD before running. Inserts {n_con} construction type(s) and {n_room}
 ' Room Type(s). Existing types with the same name are skipped (safe to re-run).
 Option Explicit
-Dim fso, conn, f, fld, dmFile, ix, nIns, nSkip, nErr
-nIns=0 : nSkip=0 : nErr=0
+Dim fso, conn, f, fld, dmFile, ix, nIns, nSkip, nErr, nSet, s, logf
+nIns=0 : nSkip=0 : nErr=0 : nSet=0
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set fld = fso.GetFolder(fso.GetParentFolderName(WScript.ScriptFullName))
@@ -235,11 +379,16 @@ For Each f In fld.Files
 Next
 If dmFile="" Then MsgBox "No dm_hvac*.dm found in this folder." : WScript.Quit 1
 
-If MsgBox("Add {n_con} construction type(s) and {n_room} Room Type(s) to:" & vbCrLf & _
+If MsgBox("Add {n_con} construction type(s), {n_room} Room Type(s), and update {n_set} project setting(s) in:" & vbCrLf & _
     dmFile & "?" & vbCrLf & vbCrLf & "A backup is made first. Close the drawing in AutoCAD.", _
     vbYesNo+vbQuestion, "DM Setup: {job}") <> vbYes Then WScript.Quit 0
 
 fso.CopyFile dmFile, dmFile & ".setup_backup.bak", True
+
+Set logf = fso.CreateTextFile(fso.GetParentFolderName(dmFile) & "\dm_setup_log.txt", True)
+logf.WriteLine "DM Setup log - " & Now
+logf.WriteLine dmFile
+logf.WriteLine "--------------------------------------------------"
 
 Set conn = CreateObject("ADODB.Connection")
 On Error Resume Next
@@ -264,14 +413,68 @@ Function RowExists(tbl, nm)
   RowExists = (r(0).Value > 0) : r.Close
 End Function
 
+' Overwrite (or insert) a project-level setting in tblGlobal.
+Sub SetGlobalText(k, v)
+  Dim c, gix : On Error Resume Next : Err.Clear
+  c = conn.Execute("SELECT COUNT(*) FROM tblGlobal WHERE sKey='" & Replace(k,"'","''") & "'")(0).Value
+  If c > 0 Then
+    conn.Execute "UPDATE tblGlobal SET bNumeric=0, sText='" & Replace(v,"'","''") & "' WHERE sKey='" & Replace(k,"'","''") & "'"
+  Else
+    gix = NextIx("tblGlobal","ixGlobal")
+    conn.Execute "INSERT INTO tblGlobal (ixGlobal,sKey,bNumeric,sText) VALUES (" & gix & ",'" & Replace(k,"'","''") & "',0,'" & Replace(v,"'","''") & "')"
+  End If
+  If Err.Number=0 Then nSet=nSet+1 : logf.WriteLine "SET tblGlobal  " & k & " = " & v Else nErr=nErr+1 : logf.WriteLine "ERR tblGlobal  " & k & " [" & Err.Number & "] " & Err.Description : Err.Clear
+End Sub
+
+Sub SetGlobalNum(k, v)
+  Dim c, gix : On Error Resume Next : Err.Clear
+  c = conn.Execute("SELECT COUNT(*) FROM tblGlobal WHERE sKey='" & Replace(k,"'","''") & "'")(0).Value
+  If c > 0 Then
+    conn.Execute "UPDATE tblGlobal SET bNumeric=1, dNumber=" & v & " WHERE sKey='" & Replace(k,"'","''") & "'"
+  Else
+    gix = NextIx("tblGlobal","ixGlobal")
+    conn.Execute "INSERT INTO tblGlobal (ixGlobal,sKey,bNumeric,dNumber) VALUES (" & gix & ",'" & Replace(k,"'","''") & "',1," & v & ")"
+  End If
+  If Err.Number=0 Then nSet=nSet+1 : logf.WriteLine "SET tblGlobal  " & k & " = " & v Else nErr=nErr+1 : logf.WriteLine "ERR tblGlobal  " & k & " [" & Err.Number & "] " & Err.Description : Err.Clear
+End Sub
+
+' Set the cooling design condition. DM keeps one tblMonth row per calendar
+' month (iMonth is 0-based); m is the 1-12 calendar month passed in. Only the
+' selected month is flagged bDoCalculation=1 (mirrors bldg-calculateMonth<0-11>
+' in tblGlobal, which the real .dm file also keeps in sync with exactly one
+' month flagged).
+Sub SetCoolingMonth(m, dry, wet)
+  Dim i, flag : On Error Resume Next : Err.Clear
+  conn.Execute "UPDATE tblMonth SET iOsaHighDry=" & dry & ", iOsaHighWet=" & wet & ", bDoCalculation=1 WHERE iMonth=" & (m-1)
+  If Err.Number=0 Then
+    For i = 0 To 11
+      If i <> (m-1) Then conn.Execute "UPDATE tblMonth SET bDoCalculation=0 WHERE iMonth=" & i
+    Next
+    For i = 0 To 11
+      If i = (m-1) Then flag = "YES" Else flag = "NO"
+      SetGlobalText "bldg-calculateMonth" & i, flag
+    Next
+    nSet=nSet+1 : logf.WriteLine "SET tblMonth  month=" & m & "  dry=" & dry & " wet=" & wet
+  Else
+    nErr=nErr+1 : logf.WriteLine "ERR tblMonth  [" & Err.Number & "] " & Err.Description & "  (month=" & m & ")"
+    Err.Clear
+  End If
+End Sub
+
 On Error Resume Next
+{globals}
 {blocks}
 On Error GoTo 0
 
 conn.Close
+logf.WriteLine "--------------------------------------------------"
+logf.WriteLine "Inserted " & nIns & ", Skipped " & nSkip & ", Settings " & nSet & ", Errors " & nErr
+logf.Close
 MsgBox "Done." & vbCrLf & _
   "Inserted: " & nIns & vbCrLf & _
   "Skipped (already present): " & nSkip & vbCrLf & _
+  "Settings updated: " & nSet & vbCrLf & _
   "Errors: " & nErr & vbCrLf & vbCrLf & _
+  "Log: " & fso.GetParentFolderName(dmFile) & "\dm_setup_log.txt" & vbCrLf & _
   "Backup: " & dmFile & ".setup_backup.bak", vbInformation, "DM Setup complete"
 '''
