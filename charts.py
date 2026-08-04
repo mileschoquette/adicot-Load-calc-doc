@@ -30,6 +30,8 @@ import matplotlib
 matplotlib.use("Agg")  # must be set before pyplot import — headless safe
 import matplotlib.pyplot as plt
 
+from hvac_pipeline import is_zone as _is_zone
+
 
 # Adicot brand-ish palette — tweak when the rest of the UI gets styled
 _PALETTE = {
@@ -53,10 +55,6 @@ _PALETTE = {
 # Default figure size — wide enough for ~6 zones without crowding
 _FIGSIZE = (10, 5)
 _DPI = 110
-
-
-def _is_zone(location: str) -> bool:
-    return location.strip().lower().startswith("zone")
 
 
 def _shorten_zone(name: str, n: int = 22) -> str:

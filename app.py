@@ -945,10 +945,6 @@ def rescrape_html(job_id: str):
 
 # ─── Routes: Duct Sizing tab ──────────────────────────────────────────
 
-def _is_zone_loc(loc: str) -> bool:
-    return loc.strip().lower().startswith("zone")
-
-
 def _room_type_tag(loc: str) -> str:
     low = (loc or "").lower()
     if "bath" in low: return "bath"
@@ -971,7 +967,7 @@ def job_duct(job_id: str):
     current_zone_index = -1
     for sa in report.get("supply_air", []):
         loc = (sa.get("location") or "").strip()
-        is_zone = _is_zone_loc(loc)
+        is_zone = hp.is_zone(loc)
         if is_zone:
             current_zone_index += 1
 

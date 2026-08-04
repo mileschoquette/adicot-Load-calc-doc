@@ -30,8 +30,9 @@ Usage:
 
 from __future__ import annotations
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Alignment
+
+from hvac_pipeline import is_zone as _is_zone
 
 
 # Threshold (in CFM) above which an under-supply on a room row counts
@@ -58,11 +59,6 @@ _F_FORMULA = (
      'IF(ISNUMBER(SEARCH("WIC",B{r})),"WIC",'
      'IF(ISNUMBER(SEARCH("corridor",B{r})),"Corridor",""))))))'
 )
-
-
-def _is_zone(location: str) -> bool:
-    """SupplyAirRow locations are either 'Zone ...' or 'Room ...' after parsing."""
-    return location.strip().lower().startswith("zone")
 
 
 def write_duct_sizing(wb: Workbook, supply_air, sheet_name: str = "Duct Sizing"):
@@ -104,8 +100,6 @@ def write_duct_sizing(wb: Workbook, supply_air, sheet_name: str = "Duct Sizing")
     zone_first_room: int | None = None  # first room row under that zone
 
     bold = Font(bold=True)
-    indent = Alignment(indent=0)
-    room_indent = Alignment(indent=1)
 
     def _close_zone(end_row: int):
         """Write SUM formulas on the current zone's C and D cells covering

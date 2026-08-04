@@ -14,6 +14,10 @@ from pathlib import Path
 from bs4 import BeautifulSoup, Tag
 
 
+def is_zone(location: str) -> bool:
+    """SupplyAirRow/load-row locations are either 'Zone ...' or 'Room ...' after parsing."""
+    return location.strip().lower().startswith("zone")
+
 
 @dataclass
 class ProjectInfo:

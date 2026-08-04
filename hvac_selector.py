@@ -16,7 +16,6 @@ import os
 import argparse
 from pathlib import Path
 import pandas as pd
-import numpy as np
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -53,15 +52,9 @@ def load_db(sheet: str) -> pd.DataFrame:
 # PSYCHROMETRIC HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 def ewb_from_db_rh(db_f: float, rh_pct: float) -> float:
-    """Approximate entering wet bulb from dry bulb (°F) and RH (%).
-    Uses Magnus formula for dew point then iterates wet bulb.
-    Accurate to ~0.3°F for typical HVAC conditions."""
+    """Approximate entering wet bulb from dry bulb (°F) and RH (%) via the
+    Stull direct approximation. Accurate to ~0.3°F for typical HVAC conditions."""
     db_c = (db_f - 32) / 1.8
-    rh = rh_pct / 100.0
-    # Magnus approximation for dew point
-    a, b = 17.625, 243.04
-    alpha = math.log(rh) + a * db_c / (b + db_c)
-    dp_c = b * alpha / (a - alpha)
     # Stull wet bulb approximation
     wb_c = (db_c * math.atan(0.151977 * (rh_pct + 8.313659) ** 0.5)
             + math.atan(db_c + rh_pct)
@@ -514,7 +507,6 @@ def select_equipment(zones: list, outdoor_db: float, outdoor_wb: float,
 
             # ── Heating capacity (heat pumps only) ────────────────────────
             htg_cap = None
-            htg_kw = None
             heating_ok = True
             if odu_series in [HP_SINGLE, HP_TWO] and htg_load > 0:
                 htg_total, htg_integ, htg_kw_sys = get_hp_heating_cap(
@@ -522,7 +514,6 @@ def select_equipment(zones: list, outdoor_db: float, outdoor_wb: float,
                     entering_db, outdoor_db, stage
                 )
                 htg_cap = htg_integ  # use integrated (defrost-corrected)
-                htg_kw = htg_kw_sys
                 # Flag if heating capacity < load (supplemental heat needed)
                 if not math.isnan(htg_cap) and htg_cap < htg_load:
                     heating_ok = False  # still include but flag
@@ -685,7 +676,6 @@ def write_excel_schedule(results: list, filepath: str,
     # Styles
     h_fill = PatternFill("solid", start_color="1F4E79")
     h_font = Font(bold=True, color="FFFFFF", size=10)
-    sub_fill = PatternFill("solid", start_color="D6E4F0")
     alt_fill = PatternFill("solid", start_color="EBF3FB")
     center = Alignment(horizontal="center", vertical="center")
     left = Alignment(horizontal="left", vertical="center")
@@ -838,7 +828,6 @@ def write_dxf_schedule(results: list, filepath: str,
     title_txt_size = 0.14
 
     table_w = sum(col_widths)
-    n_rows = len(results) + 1  # header + data
     table_h = title_height + hdr_height + row_height * len(results) + 0.5  # notes gap
 
     ox = 0.0  # origin x
