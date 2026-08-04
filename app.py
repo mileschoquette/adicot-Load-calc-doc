@@ -646,6 +646,25 @@ def results(job_id: str):
 
 # ─── Routes: Generate PDFs ────────────────────────────────────────────
 
+def _config_and_engineer_from_meta(meta: dict) -> tuple["hp.ProjectConfig", "hp.EngineerInfo"]:
+    """Build (ProjectConfig, EngineerInfo) from a job's meta.json, with the
+    studio's standard defaults for anything not yet saved."""
+    cfg_meta = meta.get("config", {})
+    config = hp.ProjectConfig(
+        toilet_exhaust_cfm=_num_or_default(cfg_meta.get("toilet_exhaust_cfm"), 70),
+        bldg_exhaust_all_toilet=bool(cfg_meta.get("bldg_exhaust_all_toilet", False)),
+        project_address=cfg_meta.get("project_address", meta.get("project_address", "")),
+    )
+    eng_meta = meta.get("engineer", {})
+    engineer = hp.EngineerInfo(
+        name=eng_meta.get("name", "Adrienne Gould-Choquette"),
+        email=eng_meta.get("email", "agc@adicot.com"),
+        phone=eng_meta.get("phone", "(804-787-0468)"),
+        state_full=eng_meta.get("state", "Florida"),
+    )
+    return config, engineer
+
+
 @app.route("/job/<job_id>/generate-pdfs", methods=["POST"])
 @_require_auth
 def generate_pdfs(job_id: str):
@@ -664,22 +683,7 @@ def generate_pdfs(job_id: str):
         flash(f"Source HTML missing on disk: {html_name}")
         return redirect(url_for("results", job_id=job_id))
 
-    cfg_meta = meta.get("config", {})
-    toilet_exh = _num_or_default(cfg_meta.get("toilet_exhaust_cfm"), 70)
-
-    config = hp.ProjectConfig(
-        toilet_exhaust_cfm=toilet_exh,
-        bldg_exhaust_all_toilet=bool(cfg_meta.get("bldg_exhaust_all_toilet", False)),
-        project_address=cfg_meta.get("project_address",
-                                     meta.get("project_address", "")),
-    )
-    eng_meta = meta.get("engineer", {})
-    engineer = hp.EngineerInfo(
-        name=eng_meta.get("name", "Adrienne Gould-Choquette"),
-        email=eng_meta.get("email", "agc@adicot.com"),
-        phone=eng_meta.get("phone", "(804-787-0468)"),
-        state_full=eng_meta.get("state", "Florida"),
-    )
+    config, engineer = _config_and_engineer_from_meta(meta)
     firm = hp.FirmInfo()
 
     try:
@@ -809,6 +813,7 @@ def _parse_zone_overrides(form) -> dict:
 
 @app.route("/job/<job_id>/commit-settings", methods=["POST"])
 @_require_auth
+@_require_parsed
 def commit_settings(job_id: str):
     """Save project settings (toilet exhaust, zone overrides) then regenerate PDFs."""
     job_dir = _job_dir(job_id)
@@ -817,6 +822,7 @@ def commit_settings(job_id: str):
     # Update config
     toilet_cfm = _num_or_default(request.form.get("toilet_exhaust_cfm"), 70)
 
+    meta.setdefault("config", {})
     meta["config"]["toilet_exhaust_cfm"] = toilet_cfm
     meta["config"]["bldg_exhaust_all_toilet"] = (
         request.form.get("bldg_exhaust_all_toilet") == "on"
@@ -836,19 +842,7 @@ def commit_settings(job_id: str):
         return redirect(url_for("results", job_id=job_id))
 
     html_path = job_dir / html_name
-    cfg_meta = meta.get("config", {})
-    config = hp.ProjectConfig(
-        toilet_exhaust_cfm=_num_or_default(cfg_meta.get("toilet_exhaust_cfm"), 70),
-        bldg_exhaust_all_toilet=bool(cfg_meta.get("bldg_exhaust_all_toilet", False)),
-        project_address=cfg_meta.get("project_address", meta.get("project_address", "")),
-    )
-    eng_meta = meta.get("engineer", {})
-    engineer = hp.EngineerInfo(
-        name=eng_meta.get("name", "Adrienne Gould-Choquette"),
-        email=eng_meta.get("email", "agc@adicot.com"),
-        phone=eng_meta.get("phone", "(804-787-0468)"),
-        state_full=eng_meta.get("state", "Florida"),
-    )
+    config, engineer = _config_and_engineer_from_meta(meta)
     firm = hp.FirmInfo()
 
     # Refresh the on-screen preview so it reflects the new settings. The results
@@ -921,20 +915,7 @@ def rescrape_html(job_id: str):
     html_path = job_dir / (meta.get("html_name") or drive_filename or "dm_hvac-loads1.html")
     html_path.write_bytes(drive_bytes or b"")
 
-    cfg_meta = meta.get("config", {})
-    toilet_exh = _num_or_default(cfg_meta.get("toilet_exhaust_cfm"), 70)
-    config = hp.ProjectConfig(
-        toilet_exhaust_cfm=toilet_exh,
-        bldg_exhaust_all_toilet=bool(cfg_meta.get("bldg_exhaust_all_toilet", False)),
-        project_address=cfg_meta.get("project_address", meta.get("project_address", "")),
-    )
-    eng_meta = meta.get("engineer", {})
-    engineer = hp.EngineerInfo(
-        name=eng_meta.get("name", "Adrienne Gould-Choquette"),
-        email=eng_meta.get("email", "agc@adicot.com"),
-        phone=eng_meta.get("phone", "(804-787-0468)"),
-        state_full=eng_meta.get("state", "Florida"),
-    )
+    config, engineer = _config_and_engineer_from_meta(meta)
 
     try:
         report, preview = _parse_and_persist(job_dir, html_path, config, engineer)
@@ -1279,6 +1260,9 @@ def _debug_equip_status():
         "equipment_db_path": str(Path(__file__).parent / "equipment_db.xlsx"),
         "equipment_db_exists": (Path(__file__).parent / "equipment_db.xlsx").exists(),
     })
+
+
+@app.route("/debug/wix-projects")
 @_require_auth
 def _debug_wix_projects():
     wix_client.invalidate_cache()
@@ -1948,8 +1932,6 @@ def job_parse(job_id: str):
 
 # ─── Spec tab ─────────────────────────────────────────────────────────
 
-import re as _re
-
 # Wix API key -> CMS field mapping reference:
 #   systemType      -> System Type       (also used for heatType)
 #   acMounting      -> AC Mounting
@@ -1971,14 +1953,14 @@ _STATE_ABBREV = {v: k for k, v in _STATE_FULL.items()}
 
 def _derive_building_code(base: dict) -> str:
     mc = base.get("mech_code", "")
-    m = _re.search(r"(\d{4})", mc)
+    m = re.search(r"(\d{4})", mc)
     yr = m.group(1) if m else ""
     return f"{yr} International Building Code (IBC)".strip()
 
 
 def _derive_plumbing_code(base: dict) -> str:
     mc = base.get("mech_code", "")
-    m = _re.search(r"(\d{4})", mc)
+    m = re.search(r"(\d{4})", mc)
     yr = m.group(1) if m else ""
     return f"{yr} International Plumbing Code (IPC)".strip()
 
@@ -2556,17 +2538,19 @@ def job_dm_setup_generate(job_id: str):
 
 # ─── Routes: Equipment Selection tab ─────────────────────────────────
 
-_EQUIP_TYPE_MAP = {
-    # single type → one result per zone
-    "ac_single": ([eng.AC_SINGLE], None),       # (ac_types, hp_types); None = not run
-    "ac_two":    ([eng.AC_TWO],   None),
-    "hp_single": (None, [eng.HP_SINGLE]),
-    "hp_two":    (None, [eng.HP_TWO]),
-    "ac":        ([eng.AC_SINGLE, eng.AC_TWO], None),
-    "hp":        (None, [eng.HP_SINGLE, eng.HP_TWO]),
-    # "all" → run both AC and HP, return side-by-side
-    "all":       ([eng.AC_SINGLE, eng.AC_TWO], [eng.HP_SINGLE, eng.HP_TWO]),
-}
+def _equip_type_map() -> dict:
+    """(ac_types, hp_types) per eq_type; None = not run. Built lazily since it
+    references hvac_selector, which may not have imported (HAS_EQUIP_SELECTOR)."""
+    return {
+        "ac_single": ([eng.AC_SINGLE], None),
+        "ac_two":    ([eng.AC_TWO],   None),
+        "hp_single": (None, [eng.HP_SINGLE]),
+        "hp_two":    (None, [eng.HP_TWO]),
+        "ac":        ([eng.AC_SINGLE, eng.AC_TWO], None),
+        "hp":        (None, [eng.HP_SINGLE, eng.HP_TWO]),
+        # "all" → run both AC and HP, return side-by-side
+        "all":       ([eng.AC_SINGLE, eng.AC_TWO], [eng.HP_SINGLE, eng.HP_TWO]),
+    }
 
 
 def _build_equip_zones(job_id: str) -> list[dict]:
@@ -2683,7 +2667,7 @@ def job_equip_run(job_id: str):
 
     # Run selection — "all" gives AC + HP side by side; others give one result per zone
     try:
-        ac_types, hp_types = _EQUIP_TYPE_MAP.get(eq_type, ([eng.AC_SINGLE, eng.AC_TWO], [eng.HP_SINGLE, eng.HP_TWO]))
+        ac_types, hp_types = _equip_type_map().get(eq_type, ([eng.AC_SINGLE, eng.AC_TWO], [eng.HP_SINGLE, eng.HP_TWO]))
         multi_mode = (ac_types is not None and hp_types is not None)
 
         if multi_mode:

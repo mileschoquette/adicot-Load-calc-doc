@@ -1,4 +1,17 @@
 # ============================================================================
+# NOT LIVE CODE — historical/reference only. Nothing in this repo imports this
+# file. It has already drifted from the real implementation and is WRONG in
+# places if used as a reference:
+#   - imports/calls `spec_dxf.build_specification_dxf(...)`, but spec_dxf.py
+#     does not exist anywhere in this repo; the real spec output is a .docx
+#     via spec_docx.build_specification_docx (see app.py's
+#     job_spec_download_docx route).
+#   - job_spec() here calls build_spec(..., include_notes=True); the real
+#     route (app.py) uses include_notes=False.
+#   - job_spec() here lacks the @_require_parsed decorator the real route has.
+# See app.py's job_spec* routes for the actual, current implementation.
+# ============================================================================
+# ============================================================================
 # === Specifications tab — routes ============================================
 # Paste this block into app.py with the other route definitions.
 # Add near the top with the other local imports:

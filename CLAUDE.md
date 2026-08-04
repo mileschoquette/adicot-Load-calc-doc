@@ -64,8 +64,8 @@ jobs/<job_id>/
 - `validators.py` — strict HTML-vs-Wix comparison. Numbers-only, unit-agnostic, R↔U auto-conversion, empty Wix values skipped silently.
 - `wix_client.py` — read-only Wix Data v2 wrapper with a 5-minute per-worker TTL cache. Returns `None`/`[]` on any error (don't raise from here).
 - `gdrive_client.py` — Drive read+write. Path convention: `1-Jobs/{Company}/{Job No}/4-Design/dm_hvac-loads1.html` (read) and `…/6-Submit/*.pdf` (write). `{Company}` is the first hyphen token of Job No. **1-Jobs must live on a Shared Drive** — service accounts have no personal quota. All calls use `corpora="allDrives"` + `includeItemsFromAllDrives=True` + `supportsAllDrives=True`. 15-min folder-id cache.
-- `app_spec_routes.py` — appears to be a paste-in snippet of spec routes; the live routes are in `app.py` (`/job/<id>/spec*`).
-- `crop_route.py` — likewise a paste-in reference; the live `/crop` route is in `app.py`.
+- `docs/snippets/app_spec_routes.py` — dead paste-in snippet of spec routes, confirmed unused and already drifted from the real code (references a nonexistent `spec_dxf` module); the live routes are in `app.py` (`/job/<id>/spec*`). Kept only as historical reference.
+- `docs/snippets/crop_route.py` — dead paste-in reference, confirmed unused and already drifted (documents a `"box"` JSON field the real route never accepts, only `"bbox"`); the live `/crop` route is in `app.py`. Kept only as historical reference.
 
 ### Auth model
 

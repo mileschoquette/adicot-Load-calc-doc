@@ -24,9 +24,7 @@ Usage:
 """
 
 from __future__ import annotations
-from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
 
 import matplotlib
 matplotlib.use("Agg")  # must be set before pyplot import — headless safe

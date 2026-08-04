@@ -1,4 +1,11 @@
 # =============================================================================
+# NOT LIVE CODE — historical/reference only. Nothing in this repo imports this
+# file; the real /crop route lives in app.py. It has already drifted from the
+# real implementation: this docstring below describes the JSON body as using
+# "box": [x,y,w,h], but the real route (app.py) and pdf_crop._parse_bbox only
+# ever accept "bbox" (or explicit x/y/w/h keys) — never "box". Do not use this
+# file as an API reference; see app.py's crop_route() for the actual behavior.
+# =============================================================================
 # /crop route — paste this block into app.py
 # =============================================================================
 # Adicot intake snippet cropper. Apps Script POSTs a client drawing PDF plus the

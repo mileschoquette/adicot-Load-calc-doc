@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Optional
 
 import requests
+
+from wix_client import _credentials, _headers
 
 log = logging.getLogger(__name__)
 
@@ -42,26 +43,6 @@ _SEED_PATH = Path(__file__).resolve().parent / "spec_seed.json"
 
 # In-memory per-worker cache of the merged data bundle.
 _cache: dict = {"data": None, "fetched_at": 0.0}
-
-
-def _credentials() -> Optional[tuple[str, str]]:
-    api_key = os.environ.get("WIX_API_KEY")
-    site_id = os.environ.get("WIX_SITE_ID")
-    if not api_key or not site_id:
-        return None
-    return api_key, site_id
-
-
-def _headers() -> Optional[dict]:
-    creds = _credentials()
-    if not creds:
-        return None
-    api_key, site_id = creds
-    return {
-        "Authorization": api_key,
-        "wix-site-id": site_id,
-        "Content-Type": "application/json",
-    }
 
 
 def invalidate_cache() -> None:

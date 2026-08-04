@@ -220,6 +220,13 @@ def build_air_balance_xlsx(computed, out_path: Path,
         for c in range(1, ncols + 1):
             ws.cell(row, c).font = BODY_FONT
         row += 1
+
+    # Blank padding rows to match build_air_balance_pdf's white space before totals
+    # (keep these two renderers' layouts in sync — see the comment there too).
+    n_zone_rows = row - (hr + 2)
+    while n_zone_rows < 4:
+        row += 1
+        n_zone_rows += 1
     _box(ws, hr + 2, 1, row - 1, ncols)
 
     # Totals row

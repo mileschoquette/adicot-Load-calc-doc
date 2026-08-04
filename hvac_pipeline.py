@@ -123,7 +123,6 @@ class RoomInfoP1:
     @property
     def vbz_cfm(self) -> float | None:
         """Resolved breathing-zone OA in CFM. Sums the numbers in ventilation_cfm_text."""
-        import re
         nums = re.findall(r"-?\d+(?:\.\d+)?", self.ventilation_cfm_text or "")
         if not nums:
             return None
@@ -161,24 +160,6 @@ class SupplyAirRow:
 
 
 @dataclass
-class SystemVentParams:
-    """ASHRAE 62.1 Section-6 system-level ventilation values."""
-    zone_name: str
-    vps_cfm: float | None = None
-    ez: float | None = None
-    xs: float | None = None
-    ep: float | None = None
-    d: float | None = None
-    er: float | None = None
-    vou_cfm: float | None = None
-    fa: float | None = None
-    ev: float | None = None
-    fb: float | None = None
-    vot_cfm: float | None = None
-    fc: float | None = None
-
-
-@dataclass
 class RoomVent:
     """Per-room ventilation row (ASHRAE 62.1)."""
     zone_name: str
@@ -191,8 +172,6 @@ class RoomVent:
     az_ft2: float | None
     ra_az_cfm: float | None
     vbz_cfm: float | None
-    voz_cfm: float | None
-    vdz_cfm: float | None
     zd: float | None
     evz: float | None
 
@@ -315,7 +294,6 @@ class HVACReport:
     rooms_p1: list[RoomInfoP1] = field(default_factory=list)
     rooms_p2: list[RoomInfoP2] = field(default_factory=list)
     supply_air: list[SupplyAirRow] = field(default_factory=list)
-    system_vent_params: list[SystemVentParams] = field(default_factory=list)
     room_vent: list[RoomVent] = field(default_factory=list)
     cooling_load_system: list[CoolingLoadSystem] = field(default_factory=list)
     cooling_load_room: list[CoolingLoadRoom] = field(default_factory=list)
@@ -567,45 +545,10 @@ def parse_supply_air(t):
     return out
 
 
-_VENT_LABEL_PATTERNS = [
-    ("vps_cfm",  re.compile(r"System Primary Airflow", re.I)),
-    ("xs",       re.compile(r"Average Outdoor Air Fraction", re.I)),
-    ("d",        re.compile(r"Occupant Diversity", re.I)),
-    ("vou_cfm",  re.compile(r"Uncorrected Air Intake", re.I)),
-    ("ev",       re.compile(r"System Ventilation Efficiency", re.I)),
-    ("vot_cfm",  re.compile(r"Outdoor Air Intake", re.I)),
-    ("ez",       re.compile(r"Zone Air Distribution Effectiveness", re.I)),
-    ("ep",       re.compile(r"Primary Air Fraction", re.I)),
-    ("er",       re.compile(r"Secondary Air Fraction", re.I)),
-    ("fa",       re.compile(r"Fraction of Supply Air to Zone from Outside Zone", re.I)),
-    ("fb",       re.compile(r"Fraction of Supply Air to Zone from Fully Mixed", re.I)),
-    ("fc",       re.compile(r"Fraction of Outdoor Air to Zone from Outside Zone", re.I)),
-]
-
-
-def _extract_vent_params(table, zone_name: str) -> SystemVentParams:
-    p = SystemVentParams(zone_name=zone_name)
-    cells = table.find_all("td", class_=lambda c: c in ("otherData", "boldData"))
-    texts = [_txt(c) for c in cells]
-    i = 0
-    while i < len(texts):
-        label = texts[i]
-        for attr, pat in _VENT_LABEL_PATTERNS:
-            if pat.search(label):
-                j = i + 1
-                while j < len(texts) and not texts[j]:
-                    j += 1
-                if j < len(texts):
-                    setattr(p, attr, _clean_number(texts[j]))
-                break
-        i += 1
-    return p
-
-
 def _extract_room_vent_rows(table, zone_name: str) -> list[RoomVent]:
     out = []
     for row in table.find_all("tr"):
-        cells = row.find_all("td", class_=lambda c: c in ("otherData", "boldData"))
+        cells = _data_cells(row)
         if len(cells) < 13:
             continue
         texts = [_txt(c) for c in cells]
@@ -625,16 +568,14 @@ def _extract_room_vent_rows(table, zone_name: str) -> list[RoomVent]:
             az_ft2=nums[4],
             ra_az_cfm=nums[5],
             vbz_cfm=nums[6],
-            voz_cfm=nums[7],
-            vdz_cfm=nums[8],
             zd=nums[9],
             evz=nums[10],
         ))
     return out
 
 
-def parse_vent_table(table, zone_name: str):
-    return _extract_vent_params(table, zone_name), _extract_room_vent_rows(table, zone_name)
+def parse_vent_table(table, zone_name: str) -> list[RoomVent]:
+    return _extract_room_vent_rows(table, zone_name)
 
 
 def parse_cooling_load_system(t):
@@ -809,9 +750,7 @@ def parse_report(html: str) -> HVACReport:
             zone = title.rstrip()
             if zone.lower().endswith(" ventilation"):
                 zone = zone[:-len(" ventilation")].strip()
-            params, room_rows = parse_vent_table(table, zone)
-            report.system_vent_params.append(params)
-            report.room_vent.extend(room_rows)
+            report.room_vent.extend(parse_vent_table(table, zone))
     return report
 
 
@@ -1220,7 +1159,6 @@ def _parse_vent_rule(rule_text: str) -> tuple[float | None, float | None, str]:
       "Direct"                          -> rp=None, ra=None, display="0"
       ""                                -> rp=None, ra=None, display="0"
     """
-    import re
     if not rule_text:
         return None, None, "0"
     text = rule_text.strip()
@@ -1525,10 +1463,6 @@ class FirmInfo:
     line2: str = "1 Devonshire Pl PH 102, Boston, MA 02109 | www.adicot.com"
 
 
-engineer = EngineerInfo()
-firm = FirmInfo()
-
-
 def build_ventilation_schedule_pdf(computed, report, out_path: Path,
                                    project_name: str | None = None):
     project_name = project_name or computed.project_name
@@ -1656,7 +1590,8 @@ def build_air_balance_pdf(computed, out_path: Path,
             _fmt_int(z.air_balance_cfm),
         ])
 
-    # blank padding rows to match reference's white space before totals
+    # Blank padding rows to match reference's white space before totals
+    # (keep this in sync with build_air_balance_xlsx in schedule_xlsx.py).
     while len(data) - 2 < 4:
         data.append(["", "", "", "", "", ""])
 

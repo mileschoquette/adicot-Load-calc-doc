@@ -17,7 +17,7 @@ import argparse
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -190,7 +190,6 @@ def get_indoor_coil_cap(series: str, fc_size: int, cfm: float,
     # Correct SHC for EDB != 80°F
     if not math.isnan(shc) and not math.isnan(bf):
         cf = 1.09 * (1 - bf) * (edb - 80) * cfm / 1000.0
-        print(cf)
         shc_corr = shc + cf  # positive when EDB>80, negative when EDB<80
     else:
         shc_corr = shc
