@@ -196,13 +196,6 @@ class RoomVent:
     zd: float | None
     evz: float | None
 
-
-@dataclass
-class VentilationScheduleZone:
-    """Zone-total row from the DM 'Ventilation Schedule' table (already Ev-corrected)."""
-    zone_name: str
-    ventilation_cfm: float | None
-
 @dataclass
 class CoolingLoadSystem:
     location: str
@@ -324,7 +317,6 @@ class HVACReport:
     supply_air: list[SupplyAirRow] = field(default_factory=list)
     system_vent_params: list[SystemVentParams] = field(default_factory=list)
     room_vent: list[RoomVent] = field(default_factory=list)
-    ventilation_schedule: list[VentilationScheduleZone] = field(default_factory=list)
     cooling_load_system: list[CoolingLoadSystem] = field(default_factory=list)
     cooling_load_room: list[CoolingLoadRoom] = field(default_factory=list)
     heating_load: list[HeatingLoad] = field(default_factory=list)
@@ -742,19 +734,6 @@ def parse_load_total(t):
     return out
 
 
-def parse_ventilation_schedule(t) -> list[VentilationScheduleZone]:
-    """Zone-total rows only ('Room <name>' rows are per-room detail, skipped)."""
-    out = []
-    for c in _simple_rows(t):
-        if len(c) < 6 or c[0].startswith("Room "):
-            continue
-        out.append(VentilationScheduleZone(
-            zone_name=c[0],
-            ventilation_cfm=_clean_number(c[5]),
-        ))
-    return out
-
-
 def parse_psychrometrics(t, zone_name: str) -> Psychrometrics:
     psy = Psychrometrics(zone_name=zone_name)
     # The psychrometric table puts row labels in <td class="psychLabel">, not "otherData".
@@ -824,8 +803,6 @@ def parse_report(html: str) -> HVACReport:
         elif prefix.startswith("psychrometrics"):
             zone = title.split("-", 1)[1].strip() if "-" in title else title
             report.psychrometrics.append(parse_psychrometrics(table, zone))
-        elif prefix == "ventilation schedule":
-            report.ventilation_schedule = parse_ventilation_schedule(table)
         elif sh and "ventilation" in prefix:
             # Strip " Ventilation" suffix from the original (cased) title to get the zone name.
             # E.g. "Zone RTU-2: SURGERY/TREAT/HYG Ventilation" → "Zone RTU-2: SURGERY/TREAT/HYG"
@@ -1380,20 +1357,14 @@ def compute(report: HVACReport, cfg: ProjectConfig) -> ComputedReport:
         # equipment-size hint and isn't always what we actually specify.
         supply_cfm = lt.cool_cfm or 0.0
 
-        # Bldg Ventilation OA per zone: prefer DM's own "Ventilation Schedule"
-        # zone-total row, which already applies DM's ventilation-efficiency (Ev)
-        # correction (e.g. ~1.17x over the naive per-room Vbz sum in a verified
-        # export — 4590 vs 3914). Do NOT substitute the system-level Vot here:
-        # zones sharing one system all carry the same Vot, which collapses the
-        # per-zone split (e.g. both zones showing 195 instead of 174 / 212).
-        # Fall back to summing per-room Vbz (no rounding — raw sum, 174 not 175)
-        # only when an export lacks the Ventilation Schedule table.
-        dm_zone = next((v for v in report.ventilation_schedule if v.zone_name == lt.location), None)
-        if dm_zone is not None and dm_zone.ventilation_cfm is not None:
-            vent_oa = dm_zone.ventilation_cfm
-        else:
-            zone_room_cfms = [r.vent_cfm for r in out.rooms if r.zone_name == lt.location]
-            vent_oa = sum(zone_room_cfms)
+        # Bldg Ventilation OA per zone = sum of per-room breathing-zone OA (Vbz),
+        # matching the per-room Ventilation Schedule and the signed deliverables.
+        # Do NOT substitute the system-level Vot here: zones sharing one system
+        # all carry the same Vot, which collapses the per-zone split (e.g. both
+        # zones showing 195 instead of 174 / 212). And do NOT round to the
+        # nearest 5 — the schedule reports the raw Vbz sum (174, not 175).
+        zone_room_cfms = [r.vent_cfm for r in out.rooms if r.zone_name == lt.location]
+        vent_oa = sum(zone_room_cfms)
 
         zone_room_exhs = [r.exh_cfm or 0.0 for r in out.rooms if r.zone_name == lt.location]
         # Bldg Exhaust always reflects the actual computed exhaust (driven by the
