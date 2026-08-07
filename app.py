@@ -91,6 +91,34 @@ except Exception as _e:
     HAS_EQUIP_SELECTOR = False
     _EQUIP_IMPORT_ERROR = str(_e)
 
+# ── Combined equipment schedule glue (ERV + dehumidifier adjustments) ──
+try:
+    import equip_schedule
+    HAS_EQUIP_SCHEDULE = True
+    _EQUIP_SCHEDULE_IMPORT_ERROR = None
+except Exception as _e:
+    HAS_EQUIP_SCHEDULE = False
+    _EQUIP_SCHEDULE_IMPORT_ERROR = str(_e)
+
+# ── ERV sizing (optional — graceful fallback if module missing) ──
+try:
+    from erv_calculator import catalog as erv_catalog
+    from erv_calculator import performance as erv_performance
+    HAS_ERV = HAS_EQUIP_SCHEDULE
+    _ERV_IMPORT_ERROR = None
+except Exception as _e:
+    HAS_ERV = False
+    _ERV_IMPORT_ERROR = str(_e)
+
+# ── Dehumidifier sizing (optional — graceful fallback if pandas/module missing) ──
+try:
+    import dehumid_calc as dh
+    HAS_DEHUMID = HAS_EQUIP_SCHEDULE
+    _DEHUMID_IMPORT_ERROR = None
+except Exception as _e:
+    HAS_DEHUMID = False
+    _DEHUMID_IMPORT_ERROR = str(_e)
+
 # ── DM Setup .vbs generator (optional — graceful fallback if module missing) ──
 try:
     import dm_setup_generator as dmsg
@@ -2576,6 +2604,51 @@ def _build_equip_conditions(job_id: str) -> dict:
     }
 
 
+def _build_erv_models() -> list[dict]:
+    """Catalog entries for the ERV model dropdown."""
+    if not HAS_ERV:
+        return []
+    return [
+        {"model": e.model, "manufacturer": e.manufacturer, "delivered_cfm": e.unit.delivered_cfm}
+        for e in erv_catalog.CATALOG
+    ]
+
+
+def _build_dehumid_models() -> list[dict]:
+    """Catalog rows for the dehumidifier model dropdown."""
+    if not HAS_DEHUMID:
+        return []
+    df = dh.load_database()
+    return [
+        {"model": row["model"], "manufacturer": row["manufacturer"],
+         "category": row["category"], "rated_capacity_pints_day": row["rated_capacity_pints_day"]}
+        for _, row in df.iterrows()
+    ]
+
+
+def _erv_conditions_from_report(report: dict) -> dict:
+    """Outside Air / Final Room Conditions psychrometric points from a report
+    dict, in the shape erv_calculator.load_impact.compute_erv_impact expects
+    (humidity ratio converted lb/lb -> grains). Empty dict if unavailable."""
+    psychs = report.get("psychrometrics") or []
+    if not psychs:
+        return {}
+    points = psychs[0].get("points", [])
+    outside = next((p for p in points if "outside air" in (p.get("label") or "").lower()), None)
+    final = next((p for p in points if "final room" in (p.get("label") or "").lower()), None)
+    if not outside or not final:
+        return {}
+    if outside.get("dry_bulb_f") is None or final.get("dry_bulb_f") is None:
+        return {}
+    return {
+        "cfm": outside.get("airflow_cfm"),
+        "t1_f": outside.get("dry_bulb_f"),
+        "w1_gr": (outside.get("humidity_ratio") or 0) * 7000,
+        "t3_f": final.get("dry_bulb_f"),
+        "w3_gr": (final.get("humidity_ratio") or 0) * 7000,
+    }
+
+
 @app.route("/job/<job_id>/equip")
 @_require_auth
 @_require_parsed
@@ -2586,11 +2659,15 @@ def job_equip(job_id: str):
     zones = _build_equip_zones(job_id)
     conds = _build_equip_conditions(job_id)
     last  = meta.get("equip_inputs", {})
+    last_erv = last.get("erv", {})
+    last_dehumid = last.get("dehumid", {})
+    erv_conds = _erv_conditions_from_report(_load_report(job_id))
 
     return render_template(
         "job_equip.html",
         active_tab="equip", job_id=job_id, meta=meta,
         zones=zones,
+        zone_names=[z["name"] for z in zones],
         odb=last.get("odb") or conds.get("odb"),
         owb=last.get("owb") or conds.get("owb"),
         edb=last.get("edb", 80),
@@ -2600,6 +2677,18 @@ def job_equip(job_id: str):
         eq_type=last.get("eq_type", "all"),
         results=None,
         xlsx_name=None,
+        has_erv=HAS_ERV, erv_import_error=_ERV_IMPORT_ERROR,
+        has_dehumid=HAS_DEHUMID, dehumid_import_error=_DEHUMID_IMPORT_ERROR,
+        erv_models=_build_erv_models(), dehumid_models=_build_dehumid_models(),
+        include_erv=last_erv.get("include", False),
+        erv_zone=last_erv.get("zone"), erv_model=last_erv.get("model"),
+        erv_season=last_erv.get("season", "summer"),
+        erv_airflow_frac=last_erv.get("airflow_frac", 1.0),
+        erv_cfm_default=erv_conds.get("cfm"),
+        include_dehumid=last_dehumid.get("include", False),
+        dehumid_zone=last_dehumid.get("zone"), dehumid_model=last_dehumid.get("model"),
+        dehumid_units=last_dehumid.get("units", 1),
+        erv_result=None, dehumid_result=None,
     )
 
 
@@ -2655,9 +2744,93 @@ def job_equip_run(job_id: str):
         flash("No zones with a cooling load found.")
         return redirect(url_for("job_equip", job_id=job_id))
 
+    # ── ERV / dehumidifier load adjustments — applied to a selected zone's
+    # ── tc/shc BEFORE AC/HP selection runs, so picking different equipment
+    # ── actually changes the resulting AC/HP sizing. Each is independently
+    # ── optional and never aborts the AC/HP run on failure. ──────────────
+    include_erv = request.form.get("include_erv") == "on"
+    include_dehumid = request.form.get("include_dehumid") == "on"
+    erv_zone_input = request.form.get("erv_zone", "").strip()
+    erv_model_input = request.form.get("erv_model", "").strip()
+    erv_season = request.form.get("erv_season", "summer").strip() or "summer"
+    erv_airflow_frac = _f("erv_airflow_frac", 1.0)
+    dehumid_zone_input = request.form.get("dehumid_zone", "").strip()
+    dehumid_model_input = request.form.get("dehumid_model", "").strip()
+    dehumid_units = int(_f("dehumid_units", 1) or 1)
+
+    erv_result = None
+    dehumid_result = None
+
+    def _zone_entries(name):
+        return [z for z in zones_input if z["name"] == name], [z for z in zones_display if z["name"] == name]
+
+    if include_dehumid and HAS_DEHUMID and dehumid_zone_input and dehumid_model_input:
+        try:
+            df = dh.load_database()
+            rows = df[df["model"] == dehumid_model_input]
+            if rows.empty:
+                raise ValueError(f"no dehumidifier catalog entry for model '{dehumid_model_input}'")
+            model_row = rows.iloc[0]
+            config = dh.DehumidConfig()
+            adj = equip_schedule.dehumid_adjustment(model_row, dehumid_units, config)
+            input_rows, display_rows = _zone_entries(dehumid_zone_input)
+            for zi, zd in zip(input_rows, display_rows):
+                new_tc, new_shc = equip_schedule.apply_load_deltas(
+                    zi["total_cooling_kbtu"], zi["sensible_cooling_kbtu"], adj)
+                zi["total_cooling_kbtu"] = new_tc
+                zi["sensible_cooling_kbtu"] = new_shc
+                zd["tc"] = new_tc
+                zd["shc"] = new_shc
+            dehumid_result = {
+                "zone": dehumid_zone_input,
+                "manufacturer": model_row["manufacturer"], "model": dehumid_model_input,
+                "units": dehumid_units, **adj,
+            }
+        except Exception:
+            traceback.print_exc()
+            flash("Dehumidifier load adjustment failed — AC/HP sizing uses the un-adjusted zone load.")
+
+    if include_erv and HAS_ERV and erv_zone_input and erv_model_input:
+        try:
+            entry = erv_catalog.get_by_model(erv_model_input)
+            conds = _erv_conditions_from_report(_load_report(job_id))
+            if not conds:
+                raise ValueError("no Outside Air / Final Room Conditions psychrometric data in report.json")
+            cfm = conds["cfm"] or entry.unit.delivered_cfm
+            adj = equip_schedule.erv_adjustment(
+                cfm, conds["t1_f"], conds["w1_gr"], conds["t3_f"], conds["w3_gr"],
+                entry.performance, erv_airflow_frac, erv_season,
+            )
+            input_rows, display_rows = _zone_entries(erv_zone_input)
+            for zi, zd in zip(input_rows, display_rows):
+                new_tc, new_shc = equip_schedule.apply_load_deltas(
+                    zi["total_cooling_kbtu"], zi["sensible_cooling_kbtu"], adj)
+                zi["total_cooling_kbtu"] = new_tc
+                zi["sensible_cooling_kbtu"] = new_shc
+                zd["tc"] = new_tc
+                zd["shc"] = new_shc
+            erv_result = {
+                "zone": erv_zone_input,
+                "manufacturer": entry.manufacturer, "model": erv_model_input,
+                "cfm": cfm, "season": erv_season, "airflow_frac": erv_airflow_frac,
+                "frost_risk": erv_performance.check_frost_risk(conds["t1_f"]) if erv_season == "winter" else False,
+                **adj,
+            }
+        except Exception:
+            traceback.print_exc()
+            flash("ERV load adjustment failed — AC/HP sizing uses the un-adjusted zone load.")
+
     meta["equip_inputs"] = {
         "odb": odb, "owb": owb, "edb": edb, "ewb": ewb,
         "cap_min": cap_min, "cap_max": cap_max, "eq_type": eq_type,
+        "erv": {
+            "include": include_erv, "zone": erv_zone_input, "model": erv_model_input,
+            "season": erv_season, "airflow_frac": erv_airflow_frac,
+        },
+        "dehumid": {
+            "include": include_dehumid, "zone": dehumid_zone_input, "model": dehumid_model_input,
+            "units": dehumid_units,
+        },
     }
     _save_meta(job_id, meta)
 
@@ -2761,9 +2934,15 @@ def job_equip_run(job_id: str):
                     "htg_data_missing": (sel or {}).get("htg_data_missing", False) if sel else False,
                 })
 
-        eng.write_excel_schedule(
-            flat_results, str(xlsx_path), project_name, odb, owb, cap_min, cap_max
-        )
+        if HAS_EQUIP_SCHEDULE:
+            equip_schedule.write_combined_schedule(
+                flat_results, erv_result, dehumid_result,
+                str(xlsx_path), project_name, odb, owb, cap_min, cap_max,
+            )
+        else:
+            eng.write_excel_schedule(
+                flat_results, str(xlsx_path), project_name, odb, owb, cap_min, cap_max
+            )
     except Exception:
         traceback.print_exc()
         flash("Excel schedule generation failed — check Render logs.")
@@ -2773,10 +2952,20 @@ def job_equip_run(job_id: str):
         "job_equip.html",
         active_tab="equip", job_id=job_id, meta=meta,
         zones=zones_display,
+        zone_names=[z["name"] for z in zones_display],
         odb=odb, owb=owb, edb=edb, ewb=ewb,
         cap_min=cap_min, cap_max=cap_max, eq_type=eq_type,
         results=results,
         xlsx_name=xlsx_name,
+        has_erv=HAS_ERV, erv_import_error=_ERV_IMPORT_ERROR,
+        has_dehumid=HAS_DEHUMID, dehumid_import_error=_DEHUMID_IMPORT_ERROR,
+        erv_models=_build_erv_models(), dehumid_models=_build_dehumid_models(),
+        include_erv=include_erv, erv_zone=erv_zone_input, erv_model=erv_model_input,
+        erv_season=erv_season, erv_airflow_frac=erv_airflow_frac,
+        erv_cfm_default=None,
+        include_dehumid=include_dehumid, dehumid_zone=dehumid_zone_input,
+        dehumid_model=dehumid_model_input, dehumid_units=dehumid_units,
+        erv_result=erv_result, dehumid_result=dehumid_result,
     )
 
 
