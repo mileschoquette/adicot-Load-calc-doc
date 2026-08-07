@@ -83,6 +83,97 @@
   </section>
 
   <section>
+    <h3 style="margin-top:0;">Ventilation (ERV)</h3>
+    {% if not has_erv %}
+      <p class="muted">ERV sizing unavailable{% if erv_import_error %}: {{ erv_import_error }}{% endif %}.</p>
+    {% else %}
+      <p class="muted">Optional. Picking an ERV for a zone adjusts that zone's sensible/total load (recovered outside-air load) before the AC/HP below is sized.</p>
+      <label style="font-weight:400; display:flex; align-items:center; gap:.4rem; margin-bottom:.6rem;">
+        <input type="checkbox" name="include_erv" {{ 'checked' if include_erv }}> Include ERV in this schedule
+      </label>
+      <div class="grid-2">
+        <div class="field">
+          <label for="erv_zone">Zone served</label>
+          <select name="erv_zone" id="erv_zone">
+            <option value="">— select zone —</option>
+            {% for zn in zone_names %}
+              <option value="{{ zn }}" {{ 'selected' if erv_zone == zn }}>{{ zn }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="erv_model">ERV unit</label>
+          <select name="erv_model" id="erv_model">
+            <option value="">— select unit —</option>
+            {% for m in erv_models %}
+              <option value="{{ m.model }}" {{ 'selected' if erv_model == m.model }}>
+                {{ m.manufacturer }} {{ m.model }} ({{ m.delivered_cfm|int }} CFM)
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>Season</label>
+          <div style="display:flex; gap:1rem; margin-top:.4rem;">
+            <label style="font-weight:400; display:flex; align-items:center; gap:.4rem;">
+              <input type="radio" name="erv_season" value="summer" {{ 'checked' if erv_season != 'winter' }}> Summer (cooling)
+            </label>
+            <label style="font-weight:400; display:flex; align-items:center; gap:.4rem;">
+              <input type="radio" name="erv_season" value="winter" {{ 'checked' if erv_season == 'winter' }}> Winter (heating)
+            </label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="erv_airflow_frac">Airflow fraction (of rated)</label>
+          <input type="number" step="0.05" min="0" max="1" name="erv_airflow_frac" id="erv_airflow_frac" value="{{ erv_airflow_frac or 1.0 }}">
+        </div>
+      </div>
+      {% if erv_cfm_default %}
+        <p class="muted small" style="margin-top:.5rem;">Outside-air CFM and psychrometric conditions are pulled automatically from the load calc's "Outside Air" / "Final Room Conditions" points (~{{ erv_cfm_default|round(0) }} CFM detected).</p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <section>
+    <h3 style="margin-top:0;">Dehumidification</h3>
+    {% if not has_dehumid %}
+      <p class="muted">Dehumidifier sizing unavailable{% if dehumid_import_error %}: {{ dehumid_import_error }}{% endif %}.</p>
+    {% else %}
+      <p class="muted">Optional. Picking a quantity/model adjusts that zone's sensible/total load (latent removed, compressor heat added back) before the AC/HP below is sized.</p>
+      <label style="font-weight:400; display:flex; align-items:center; gap:.4rem; margin-bottom:.6rem;">
+        <input type="checkbox" name="include_dehumid" {{ 'checked' if include_dehumid }}> Include dehumidifier in this schedule
+      </label>
+      <div class="grid-2">
+        <div class="field">
+          <label for="dehumid_zone">Zone served</label>
+          <select name="dehumid_zone" id="dehumid_zone">
+            <option value="">— select zone —</option>
+            {% for zn in zone_names %}
+              <option value="{{ zn }}" {{ 'selected' if dehumid_zone == zn }}>{{ zn }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="dehumid_model">Dehumidifier model</label>
+          <select name="dehumid_model" id="dehumid_model">
+            <option value="">— select model —</option>
+            {% for m in dehumid_models %}
+              <option value="{{ m.model }}" {{ 'selected' if dehumid_model == m.model }}>
+                {{ m.manufacturer }} {{ m.model }} ({{ m.category }}, {{ m.rated_capacity_pints_day|int }} pt/day)
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="dehumid_units">Quantity</label>
+          <input type="number" step="1" min="1" name="dehumid_units" id="dehumid_units" value="{{ dehumid_units or 1 }}">
+          <small>Change this to compare, e.g., 3 units vs. 2 — resubmit to see the resulting AC/HP sizing shift.</small>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  <section>
     <h3 style="margin-top:0;">Zones <span class="muted small">(pre-filled from load calc)</span></h3>
     <div style="overflow-x:auto;">
       <table style="width:100%; border-collapse:collapse; font-size:.88rem;">
@@ -204,6 +295,53 @@
     </div>
   {% endmacro %}
 
+  {% macro erv_card(erv) %}
+    <div style="border:1px solid var(--border); border-radius:8px; margin-top:1rem; overflow:hidden;">
+      <div style="padding:.5rem .85rem; background:var(--card, #f9f9f9); border-bottom:1px solid var(--border);">
+        <strong>Ventilation (ERV) — {{ erv.zone }}</strong>
+        <span class="muted small">{{ erv.manufacturer }} {{ erv.model }} · {{ erv.season }} @ {{ (erv.airflow_frac * 100)|round(0)|int }}% airflow</span>
+      </div>
+      <div style="padding:.65rem .85rem; font-size:.85rem;">
+        <dl style="display:grid; grid-template-columns:220px 1fr; gap:3px 10px; margin:0;">
+          <dt class="muted">Outside airflow</dt><dd style="margin:0;">{{ erv.cfm|round(0)|int }} CFM</dd>
+          <dt class="muted">Raw OA sensible / latent</dt>
+          <dd style="margin:0;">{{ erv.impact.raw_sensible_btuh|round(0)|int }} / {{ erv.impact.raw_latent_btuh|round(0)|int }} BTU/h</dd>
+          <dt class="muted">Net OA sensible / latent (after recovery)</dt>
+          <dd style="margin:0;">{{ erv.impact.net_sensible_btuh|round(0)|int }} / {{ erv.impact.net_latent_btuh|round(0)|int }} BTU/h</dd>
+          <dt class="muted">AC/HP load adjustment</dt>
+          <dd style="margin:0; font-weight:600;">sensible {{ '%+d'|format(erv.sensible_delta_btuh) }} · total {{ '%+d'|format(erv.total_delta_btuh) }} BTU/h</dd>
+          {% if erv.frost_risk %}
+            <dt class="muted">Frost risk</dt><dd style="margin:0; color:#9a5b00;">Outdoor temp below core frost threshold — verify defrost strategy.</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  {% endmacro %}
+
+  {% macro dehumid_card(dehumid) %}
+    <div style="border:1px solid var(--border); border-radius:8px; margin-top:1rem; overflow:hidden;">
+      <div style="padding:.5rem .85rem; background:var(--card, #f9f9f9); border-bottom:1px solid var(--border);">
+        <strong>Dehumidification — {{ dehumid.zone }}</strong>
+        <span class="muted small">{{ dehumid.units }}x {{ dehumid.manufacturer }} {{ dehumid.model }}</span>
+      </div>
+      <div style="padding:.65rem .85rem; font-size:.85rem;">
+        <dl style="display:grid; grid-template-columns:220px 1fr; gap:3px 10px; margin:0;">
+          <dt class="muted">Moisture removed</dt>
+          <dd style="margin:0;">{{ dehumid.pints_day_removed|round(0)|int }} pints/day</dd>
+          <dt class="muted">Latent load removed</dt>
+          <dd style="margin:0;">{{ dehumid.latent_removed_btuh|round(0)|int }} BTU/h</dd>
+          <dt class="muted">Sensible heat added back</dt>
+          <dd style="margin:0;">{{ dehumid.sensible_added_btuh|round(0)|int }} BTU/h</dd>
+          <dt class="muted">AC/HP load adjustment</dt>
+          <dd style="margin:0; font-weight:600;">sensible {{ '%+d'|format(dehumid.sensible_delta_btuh) }} · total {{ '%+d'|format(dehumid.total_delta_btuh) }} BTU/h</dd>
+        </dl>
+      </div>
+    </div>
+  {% endmacro %}
+
+  {% if erv_result %}{{ erv_card(erv_result) }}{% endif %}
+  {% if dehumid_result %}{{ dehumid_card(dehumid_result) }}{% endif %}
+
   {% for res in results %}
     <div style="border:1px solid var(--border); border-radius:8px; margin-top:1rem; overflow:hidden;">
       {# Zone header #}
@@ -211,7 +349,11 @@
                   padding:.65rem 1rem; background:var(--card, #f9f9f9);
                   border-bottom:1px solid var(--border);">
         <strong>{{ res.zone }}</strong>
-        <span class="muted small">{{ res.tc_load }} kBtu/h total · {{ res.shc_load }} kBtu/h sensible</span>
+        <span class="muted small">{{ res.tc_load }} kBtu/h total · {{ res.shc_load }} kBtu/h sensible
+          {% if (erv_result and erv_result.zone == res.zone) or (dehumid_result and dehumid_result.zone == res.zone) %}
+            <span style="color:#1f7a3d;">— load adjusted for ERV/dehumidifier</span>
+          {% endif %}
+        </span>
       </div>
 
       {# Selection cards — side by side when both AC and HP present #}
