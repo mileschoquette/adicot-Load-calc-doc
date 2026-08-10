@@ -665,77 +665,82 @@ def select_equipment_multi(zones, outdoor_db, outdoor_wb,
 # ─────────────────────────────────────────────────────────────────────────────
 # EXCEL SCHEDULE OUTPUT
 # ─────────────────────────────────────────────────────────────────────────────
-def write_excel_schedule(results: list, filepath: str,
-                          project_name: str = "PROJECT",
-                          outdoor_db: float = None, outdoor_wb: float = None,
-                          cap_min_pct: float = 100, cap_max_pct: float = 115):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Equipment Schedule"
+# ── Shared schedule-writing helpers (also used by equip_schedule.py for the
+# ── combined AC/HP + ERV + Dehumidification workbook) ─────────────────────────
+_H_FILL = PatternFill("solid", start_color="1F4E79")
+_H_FONT = Font(bold=True, color="FFFFFF", size=10)
+_ALT_FILL = PatternFill("solid", start_color="EBF3FB")
+_CENTER = Alignment(horizontal="center", vertical="center")
+_LEFT = Alignment(horizontal="left", vertical="center")
+_THIN = Side(style="thin", color="AAAAAA")
+_BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 
-    # Styles
-    h_fill = PatternFill("solid", start_color="1F4E79")
-    h_font = Font(bold=True, color="FFFFFF", size=10)
-    alt_fill = PatternFill("solid", start_color="EBF3FB")
-    center = Alignment(horizontal="center", vertical="center")
-    left = Alignment(horizontal="left", vertical="center")
-    thin = Side(style="thin", color="AAAAAA")
-    bdr = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    def hcell(row, col, val, width=None):
-        c = ws.cell(row=row, column=col, value=val)
-        c.font = h_font; c.fill = h_fill; c.alignment = center; c.border = bdr
-        if width:
-            ws.column_dimensions[get_column_letter(col)].width = width
+def hcell(ws, row, col, val, width=None):
+    c = ws.cell(row=row, column=col, value=val)
+    c.font = _H_FONT; c.fill = _H_FILL; c.alignment = _CENTER; c.border = _BORDER
+    if width:
+        ws.column_dimensions[get_column_letter(col)].width = width
 
-    def dcell(row, col, val, alt=False, bold=False, center_align=True):
-        c = ws.cell(row=row, column=col, value=val)
-        if alt: c.fill = alt_fill
-        if bold: c.font = Font(bold=True)
-        c.alignment = center if center_align else left
-        c.border = bdr
 
-    # Title
+def dcell(ws, row, col, val, alt=False, bold=False, center_align=True):
+    c = ws.cell(row=row, column=col, value=val)
+    if alt: c.fill = _ALT_FILL
+    if bold: c.font = Font(bold=True)
+    c.alignment = _CENTER if center_align else _LEFT
+    c.border = _BORDER
+
+
+def write_title_block(ws, title: str, cond_str: str):
+    """Merged title row (A1) + italic conditions row (A2), same styling for any schedule."""
     ws.merge_cells("A1:R1")
     tc = ws["A1"]
-    tc.value = f"MECHANICAL — AC/HP EQUIPMENT SCHEDULE — {project_name}"
+    tc.value = title
     tc.font = Font(bold=True, size=13, color="1F4E79")
     tc.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 24
 
-    # Design conditions row
     ws.merge_cells("A2:R2")
-    cond_str = ""
-    if outdoor_db: cond_str += f"  Outdoor DB: {outdoor_db}°F"
-    if outdoor_wb: cond_str += f"  |  Outdoor WB: {outdoor_wb}°F"
-    cond_str += "  |  Capacities at design conditions (corrected)"
     ws["A2"].value = cond_str
     ws["A2"].font = Font(italic=True, size=9, color="606060")
     ws["A2"].alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[2].height = 16
 
-    # Column headers — row 3
-    columns = [
-        ("Tag / Zone", 14), ("Outdoor Unit Model", 22), ("Series", 10),
-        ("Nom. Tons", 10), ("Indoor Unit", 22), ("Fan Coil\nSeries", 10),
-        ("Nom. CFM", 10),
-        ("Design TC\n(kBtu/h)", 12), ("Sys TC\n(kBtu/h)", 12), ("TC\n(%)", 8),
-        ("Design SHC\n(kBtu/h)", 13), ("Sys SHC\n(kBtu/h)", 13),
-        ("Op. SST\n(°F)", 10), ("Op. SDT\n(°F)", 10),
-        ("ODU kW\n@ Design", 11), ("Site EER\n(Btu/Wh)", 10),
-        ("HP Htg Cap\n(kBtu/h)", 13), ("Htg OK?", 8),
-    ]
-    ws.row_dimensions[3].height = 36
-    for col_idx, (hdr, width) in enumerate(columns, 1):
-        hcell(3, col_idx, hdr, width)
 
-    row = 4
+def write_notes_section(ws, start_row: int, notes: list) -> int:
+    row = start_row
+    ws.cell(row=row, column=1, value="NOTES:").font = Font(bold=True)
+    for note in notes:
+        row += 1
+        ws.cell(row=row, column=1, value=note).font = Font(size=9)
+    return row + 1
+
+
+AC_HP_COLUMNS = [
+    ("Tag / Zone", 14), ("Outdoor Unit Model", 22), ("Series", 10),
+    ("Nom. Tons", 10), ("Indoor Unit", 22), ("Fan Coil\nSeries", 10),
+    ("Nom. CFM", 10),
+    ("Design TC\n(kBtu/h)", 12), ("Sys TC\n(kBtu/h)", 12), ("TC\n(%)", 8),
+    ("Design SHC\n(kBtu/h)", 13), ("Sys SHC\n(kBtu/h)", 13),
+    ("Op. SST\n(°F)", 10), ("Op. SDT\n(°F)", 10),
+    ("ODU kW\n@ Design", 11), ("Site EER\n(Btu/Wh)", 10),
+    ("HP Htg Cap\n(kBtu/h)", 13), ("Htg OK?", 8),
+]
+
+
+def write_ac_hp_block(ws, start_row: int, results: list) -> int:
+    """Column-header row + one data row per zone/unit, starting at start_row. Returns the next free row."""
+    ws.row_dimensions[start_row].height = 36
+    for col_idx, (hdr, width) in enumerate(AC_HP_COLUMNS, 1):
+        hcell(ws, start_row, col_idx, hdr, width)
+
+    row = start_row + 1
     for i, res in enumerate(results):
         sel = res["selected"]
         alt = (i % 2 == 0)
         if sel is None:
-            dcell(row, 1, res["zone"], alt); dcell(row, 2, "NO MATCH FOUND", alt, bold=True)
-            for c in range(3, len(columns)+1): dcell(row, c, "—", alt)
+            dcell(ws, row, 1, res["zone"], alt); dcell(ws, row, 2, "NO MATCH FOUND", alt, bold=True)
+            for c in range(3, len(AC_HP_COLUMNS) + 1): dcell(ws, row, c, "—", alt)
             row += 1
             continue
 
@@ -760,15 +765,15 @@ def write_excel_schedule(results: list, filepath: str,
             "YES" if sel["htg_ok"] else "SUPPL. HTG REQ.",
         ]
         for col_idx, val in enumerate(vals, 1):
-            dcell(row, col_idx, val, alt,
+            dcell(ws, row, col_idx, val, alt,
                   bold=(col_idx == 2),
                   center_align=(col_idx != 5))
         row += 1
+    return row
 
-    # Notes section
-    row += 1
-    ws.cell(row=row, column=1, value="NOTES:").font = Font(bold=True)
-    notes = [
+
+def ac_hp_notes(cap_min_pct: float, cap_max_pct: float) -> list:
+    return [
         "1. All capacities shown are corrected to actual design outdoor and indoor conditions.",
         "2. Sensible Heat Capacity (SHC) corrected for entering dry-bulb ≠ 80°F per manufacturer correction formula.",
         "3. HP Heating Capacity shown as integrated value with defrost penalty subtracted per AHRI 210/240.",
@@ -778,9 +783,25 @@ def write_excel_schedule(results: list, filepath: str,
         f"7. Selection range: {cap_min_pct:.0f}% – {cap_max_pct:.0f}% of design cooling load.",
         "8. Source data: Carrier FG5, FJ5, GA5SAN5, GA8TAN5, GH5SAN5, GH8TAN5 Product Data. All Puron Advance™ (R-454B).",
     ]
-    for note in notes:
-        row += 1
-        ws.cell(row=row, column=1, value=note).font = Font(size=9)
+
+
+def write_excel_schedule(results: list, filepath: str,
+                          project_name: str = "PROJECT",
+                          outdoor_db: float = None, outdoor_wb: float = None,
+                          cap_min_pct: float = 100, cap_max_pct: float = 115):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Equipment Schedule"
+
+    cond_str = ""
+    if outdoor_db: cond_str += f"  Outdoor DB: {outdoor_db}°F"
+    if outdoor_wb: cond_str += f"  |  Outdoor WB: {outdoor_wb}°F"
+    cond_str += "  |  Capacities at design conditions (corrected)"
+    write_title_block(ws, f"MECHANICAL — AC/HP EQUIPMENT SCHEDULE — {project_name}", cond_str)
+
+    row = write_ac_hp_block(ws, 3, results)
+    row += 1
+    write_notes_section(ws, row, ac_hp_notes(cap_min_pct, cap_max_pct))
 
     wb.save(filepath)
     print(f"Schedule saved: {filepath}")
