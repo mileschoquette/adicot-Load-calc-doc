@@ -975,9 +975,10 @@ def job_duct(job_id: str):
         if is_zone:
             current_raw = None
         else:
+            current_val = sa.get("current_supply_cfm") or 0
             try:
-                current_raw = int(required_raw) if float(required_raw).is_integer() \
-                              else float(required_raw)
+                current_raw = int(current_val) if float(current_val).is_integer() \
+                              else float(current_val)
             except (TypeError, ValueError):
                 current_raw = 0
 
