@@ -382,17 +382,20 @@ EXPIRE_AFTER_DAYS = 30
 _BUCKET_RANK = {"green": 0, "yellow": 1, "red": 2, "unset": 3, "expired": 4, "invoiced": 5}
 
 
-def _is_stale(created_date_str: str) -> bool:
+def _is_stale(created_date_str) -> bool:
     """True if created_date_str (a Wix _createdDate ISO string) is EXPIRE_AFTER_DAYS
     or more in the past. Missing/unparseable dates never count as stale, so a
     project never silently expires just because we couldn't read its date."""
-    if not created_date_str:
+    if not created_date_str or not isinstance(created_date_str, str):
         return False
     try:
         created = datetime.datetime.fromisoformat(created_date_str.replace("Z", "+00:00"))
-    except ValueError:
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=datetime.timezone.utc)
+        age = datetime.datetime.now(datetime.timezone.utc) - created
+    except (ValueError, TypeError, AttributeError):
         return False
-    return (datetime.datetime.now(datetime.timezone.utc) - created).days >= EXPIRE_AFTER_DAYS
+    return age.days >= EXPIRE_AFTER_DAYS
 
 
 def _entry_bucket(e: dict) -> str:
