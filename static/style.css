@@ -347,6 +347,37 @@ footer {
 .stage-select.stage-yellow { background: var(--warn-bg);  color: var(--warn); border-color: var(--warn); }
 .stage-select.stage-unset  { background: var(--unset-bg); color: var(--muted); border-color: var(--border); }
 
+/* ── Job-list layout + checkbox filter panel ── */
+.jobs-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+.jobs-table-wrap { flex: 1; min-width: 0; }
+.jobs-filter-panel {
+  flex: 0 0 190px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  background: #fff;
+}
+.jobs-filter-panel .checkbox { margin: 0.4rem 0; }
+@media (max-width: 700px) {
+  .jobs-layout { flex-direction: column; }
+  .jobs-filter-panel { flex: none; width: 100%; }
+}
+
+.filter-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+}
+.filter-swatch.stage-green  { background: var(--success); }
+.filter-swatch.stage-red    { background: var(--danger); }
+.filter-swatch.stage-yellow { background: var(--warn); }
+.filter-swatch.stage-unset  { background: var(--unset-bg); border: 1px solid var(--border); }
+
 /* ── Modal (invoice confirm) ── */
 .modal-overlay {
   position: fixed;

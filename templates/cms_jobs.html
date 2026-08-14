@@ -11,44 +11,57 @@
 <p class="muted">Click a project to open its work order, or run a one-off temp job from a Design Master HTML export.</p>
 
 {% if projects %}
-  <input type="text" id="cms-filter" class="cms-filter"
-         placeholder="Filter by address, job no, or title…" autocomplete="off">
-  <table class="jobs cms-jobs">
-    <thead>
-      <tr><th>Job No</th><th>Address / Title</th><th>Stage</th><th>Status</th></tr>
-    </thead>
-    <tbody>
-      {% for p in projects %}
-        <tr class="cms-row"
-            data-search="{{ (p.job_no ~ ' ' ~ p.address ~ ' ' ~ p.title)|lower }}"
-            data-invoiced="{{ '1' if p.invoiced else '' }}">
-          <td>
-            <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.job_no or "—" }}</a>
-          </td>
-          <td>
-            <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.address or p.title or "(untitled)" }}</a>
-            {% if p.address and p.title %}<div class="muted small">{{ p.title }}</div>{% endif %}
-          </td>
-          <td>
-            <select class="stage-select stage-{{ p.stage or 'unset' }}" data-id="{{ p._id }}">
-              <option value="unset"  {{ 'selected' if not p.stage }}>Unset</option>
-              <option value="green"  {{ 'selected' if p.stage == 'green' }}>Ready to submit</option>
-              <option value="yellow" {{ 'selected' if p.stage == 'yellow' }}>Needs work</option>
-              <option value="red"    {{ 'selected' if p.stage == 'red' }}>Waiting on client</option>
-            </select>
-          </td>
-          <td>
-            {% if p.parsed %}
-              <span class="badge badge-ok">Parsed</span>
-            {% else %}
-              <span class="muted small">—</span>
-            {% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="muted small" id="cms-empty" hidden>No projects match your filter.</p>
+  <div class="jobs-layout">
+    <div class="jobs-table-wrap">
+      <input type="text" id="cms-filter" class="cms-filter"
+             placeholder="Filter by address, job no, or title…" autocomplete="off">
+      <table class="jobs cms-jobs">
+        <thead>
+          <tr><th>Job No</th><th>Address / Title</th><th>Stage</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for p in projects %}
+            <tr class="cms-row"
+                data-search="{{ (p.job_no ~ ' ' ~ p.address ~ ' ' ~ p.title)|lower }}"
+                data-invoiced="{{ '1' if p.invoiced else '' }}"
+                data-stage="{{ p.stage or 'unset' }}">
+              <td>
+                <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.job_no or "—" }}</a>
+              </td>
+              <td>
+                <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.address or p.title or "(untitled)" }}</a>
+                {% if p.address and p.title %}<div class="muted small">{{ p.title }}</div>{% endif %}
+              </td>
+              <td>
+                <select class="stage-select stage-{{ p.stage or 'unset' }}" data-id="{{ p._id }}">
+                  <option value="unset"  {{ 'selected' if not p.stage }}>Unset</option>
+                  <option value="green"  {{ 'selected' if p.stage == 'green' }}>Ready to submit</option>
+                  <option value="yellow" {{ 'selected' if p.stage == 'yellow' }}>Needs work</option>
+                  <option value="red"    {{ 'selected' if p.stage == 'red' }}>Waiting on client</option>
+                </select>
+              </td>
+              <td>
+                {% if p.parsed %}
+                  <span class="badge badge-ok">Parsed</span>
+                {% else %}
+                  <span class="muted small">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small" id="cms-empty" hidden>No projects match your filter.</p>
+    </div>
+    <div class="jobs-filter-panel">
+      <p class="muted small" style="margin-top:0; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Show</p>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="unset" checked> <span class="filter-swatch stage-unset"></span> Unset</label>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="yellow" checked> <span class="filter-swatch stage-yellow"></span> Needs work</label>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="green" checked> <span class="filter-swatch stage-green"></span> Ready to submit</label>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="red" checked> <span class="filter-swatch stage-red"></span> Waiting on client</label>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="invoiced"> Invoiced</label>
+    </div>
+  </div>
 {% else %}
   <p class="muted">No CMS projects available (Wix is unreachable or credentials aren't set).
     Use <strong>Run a Temp Job</strong> to process an HTML export directly.</p>
@@ -60,15 +73,20 @@
   const rows  = Array.from(document.querySelectorAll('.cms-row'));
   const empty = document.getElementById('cms-empty');
 
+  function checkedBuckets() {
+    return new Set(Array.from(document.querySelectorAll('.stage-filter:checked')).map(cb => cb.value));
+  }
+
   function applyFilter() {
     if (!f) return;
     const q = f.value.trim().toLowerCase();
+    const buckets = checkedBuckets();
     let shown = 0;
     for (const r of rows) {
-      const invoiced = r.dataset.invoiced === '1';
-      const match = !q || r.dataset.search.includes(q);
-      // Invoiced projects stay out of the list until the user searches for them.
-      const visible = match && !(invoiced && !q);
+      // Invoiced projects belong to the "invoiced" bucket regardless of stage,
+      // so they stay hidden by default until that box is checked.
+      const bucket = r.dataset.invoiced === '1' ? 'invoiced' : r.dataset.stage;
+      const visible = (!q || r.dataset.search.includes(q)) && buckets.has(bucket);
       r.style.display = visible ? '' : 'none';
       if (visible) shown++;
     }
@@ -76,6 +94,7 @@
   }
 
   if (f) f.addEventListener('input', applyFilter);
+  document.querySelectorAll('.stage-filter').forEach(cb => cb.addEventListener('change', applyFilter));
   applyFilter();
 
   // Inline stage dropdown — saves immediately, no page reload.
@@ -95,6 +114,8 @@
         if (prevClass) sel.classList.remove(prevClass);
         sel.classList.add('stage-' + (d.stage || 'unset'));
         sel.dataset.prevValue = d.stage || 'unset';
+        sel.closest('tr').dataset.stage = d.stage || 'unset';
+        applyFilter();
       } else {
         sel.value = prevValue;
         alert(d.error || 'Failed to save stage.');
