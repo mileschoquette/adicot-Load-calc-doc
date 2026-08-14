@@ -495,6 +495,21 @@ def debug_wix_projects():
     return jsonify(out)
 
 
+@app.route("/debug/get-project/<wix_id>")
+@_require_auth
+def debug_get_project(wix_id: str):
+    """Temporary diagnostic: shows what wix_client.get_project() returns for a
+    given id, and whether it's found in list_projects() too, to debug why
+    /job/<id>/star 404s for a project that appears in the digest/landing list."""
+    from werkzeug.utils import secure_filename
+    return jsonify({
+        "wix_id": wix_id,
+        "secure_filename_matches": secure_filename(wix_id) == wix_id,
+        "in_list_projects": any(p.get("_id") == wix_id for p in wix_client.list_projects()),
+        "get_project_result": wix_client.get_project(wix_id),
+    })
+
+
 @app.route("/debug/send-digest", methods=["GET", "POST"])
 @_require_auth
 def debug_send_digest():
