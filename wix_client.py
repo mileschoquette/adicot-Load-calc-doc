@@ -1,11 +1,15 @@
-"""Wix CMS read-only client.
+"""Wix CMS client — mostly read-only, plus one write operation.
 
-Wraps the Wix Data v2 REST API for the two operations the HVAC tool needs:
+Wraps the Wix Data v2 REST API for the operations the HVAC tool needs:
   - list_projects() — returns lightweight project records for the autocomplete
   - get_project(item_id) — returns one full project record for the validator
+  - delete_project(item_id) — permanently deletes a project (the only write
+    call in this module; requires "Manage" scope on the WIX_API_KEY, unlike
+    the read calls above)
 
-Both functions return None / [] on any error (network, auth, bad response) so
-callers can degrade gracefully when Wix is unreachable. Don't raise from here.
+All functions return None / [] / False on any error (network, auth, bad
+response) so callers can degrade gracefully when Wix is unreachable or
+under-permissioned. Don't raise from here.
 
 Reads WIX_API_KEY and WIX_SITE_ID from environment. If either is missing,
 list_projects() returns [] and get_project() returns None — the tool keeps
@@ -112,7 +116,7 @@ def list_projects() -> list[dict]:
                 "query": {
                     "paging": {"limit": 100},
                     # Only fetch the fields the autocomplete needs.
-                    "fields": ["_id", "projectAddress", "jobNo", "title"],
+                    "fields": ["_id", "projectAddress", "jobNo", "title", "_createdDate"],
                 },
             }
             if cursor:
@@ -141,6 +145,7 @@ def list_projects() -> list[dict]:
                     "projectAddress": data.get("projectAddress") or "",
                     "jobNo":          data.get("jobNo") or "",
                     "title":          data.get("title") or "",
+                    "createdDate":    data.get("_createdDate") or item.get("_createdDate") or "",
                 })
 
             cursors = payload.get("pagingMetadata", {}).get("cursors") or {}
@@ -193,3 +198,34 @@ def get_project(item_id: str) -> Optional[dict]:
     except requests.RequestException as e:
         log.error("Wix get_project(%s) request failed: %s", item_id, e)
         return None
+
+
+def delete_project(item_id: str) -> bool:
+    """Permanently delete a project from the Wix CMS. Returns True on success,
+    False on any error (network, auth, missing "Manage" permission, etc.) —
+    same degrade-gracefully contract as the rest of this module. Note: unlike
+    list_projects()/get_project(), this requires the WIX_API_KEY to have
+    Manage (write) access to Data Items, not just Read — a 403 here likely
+    means that scope hasn't been granted in the Wix dashboard yet."""
+    if not item_id:
+        return False
+    headers = _headers()
+    if headers is None:
+        log.warning("Wix credentials not set; delete_project() returning False.")
+        return False
+
+    try:
+        resp = requests.delete(
+            f"{_WIX_API_BASE}/items/{item_id}",
+            headers=headers,
+            params={"dataCollectionId": _PROJECTS_COLLECTION_ID},
+            timeout=_HTTP_TIMEOUT_SECONDS,
+        )
+        if not resp.ok:
+            log.error("Wix delete_project(%s) HTTP %s: %s",
+                      item_id, resp.status_code, resp.text[:300])
+        return resp.ok
+
+    except requests.RequestException as e:
+        log.error("Wix delete_project(%s) request failed: %s", item_id, e)
+        return False

@@ -24,7 +24,8 @@
             <tr class="cms-row"
                 data-search="{{ (p.job_no ~ ' ' ~ p.address ~ ' ' ~ p.title)|lower }}"
                 data-invoiced="{{ '1' if p.invoiced else '' }}"
-                data-stage="{{ p.stage or 'unset' }}">
+                data-stage="{{ p.stage or 'unset' }}"
+                data-bucket="{{ p.bucket }}">
               <td>
                 <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.job_no or "—" }}</a>
               </td>
@@ -39,6 +40,7 @@
                   <option value="yellow" {{ 'selected' if p.stage == 'yellow' }}>Needs work</option>
                   <option value="red"    {{ 'selected' if p.stage == 'red' }}>Waiting on client</option>
                 </select>
+                {% if p.expired %}<div class="muted small">Expired</div>{% endif %}
               </td>
               <td>
                 {% if p.parsed %}
@@ -46,6 +48,9 @@
                 {% else %}
                   <span class="muted small">—</span>
                 {% endif %}
+                <button type="button" class="danger-link delete-btn"
+                        data-id="{{ p._id }}"
+                        data-label="{{ p.job_no or p.address or p.title or 'this project' }}">Delete</button>
               </td>
             </tr>
           {% endfor %}
@@ -59,7 +64,22 @@
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="yellow" checked> <span class="filter-swatch stage-yellow"></span> Needs work</label>
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="green" checked> <span class="filter-swatch stage-green"></span> Ready to submit</label>
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="red" checked> <span class="filter-swatch stage-red"></span> Waiting on client</label>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="expired"> <span class="filter-swatch stage-expired"></span> Expired</label>
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="invoiced"> Invoiced</label>
+    </div>
+  </div>
+
+  {# ── Delete confirmation modal ──────────────────────────────────── #}
+  <div class="modal-overlay" id="del-modal">
+    <div class="modal">
+      <h3>Delete project</h3>
+      <p class="muted" id="del-label"></p>
+      <p class="muted small">This permanently deletes the project from the Wix CMS and removes its local workspace. This cannot be undone.</p>
+      <div class="modal-error" id="del-error" hidden></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="del-cancel">Cancel</button>
+        <button type="button" class="btn-primary" id="del-confirm" style="background:var(--danger);">Yes, delete permanently</button>
+      </div>
     </div>
   </div>
 {% else %}
@@ -83,10 +103,7 @@
     const buckets = checkedBuckets();
     let shown = 0;
     for (const r of rows) {
-      // Invoiced projects belong to the "invoiced" bucket regardless of stage,
-      // so they stay hidden by default until that box is checked.
-      const bucket = r.dataset.invoiced === '1' ? 'invoiced' : r.dataset.stage;
-      const visible = (!q || r.dataset.search.includes(q)) && buckets.has(bucket);
+      const visible = (!q || r.dataset.search.includes(q)) && buckets.has(r.dataset.bucket);
       r.style.display = visible ? '' : 'none';
       if (visible) shown++;
     }
@@ -114,7 +131,13 @@
         if (prevClass) sel.classList.remove(prevClass);
         sel.classList.add('stage-' + (d.stage || 'unset'));
         sel.dataset.prevValue = d.stage || 'unset';
-        sel.closest('tr').dataset.stage = d.stage || 'unset';
+        const tr = sel.closest('tr');
+        tr.dataset.stage = d.stage || 'unset';
+        // Invoiced rows keep the "invoiced" bucket regardless of stage changes.
+        // Reverting to Unset is optimistically shown as "unset" here even if the
+        // project is old enough to be "expired" — a page reload will re-derive
+        // the exact bucket from the server.
+        if (tr.dataset.invoiced !== '1') tr.dataset.bucket = d.stage || 'unset';
         applyFilter();
       } else {
         sel.value = prevValue;
@@ -129,6 +152,58 @@
   });
   // Track each select's last-known-good value so a failed save can revert to it.
   document.querySelectorAll('.stage-select').forEach(sel => { sel.dataset.prevValue = sel.value; });
+
+  // Delete-project modal.
+  const delModal   = document.getElementById('del-modal');
+  const delLabel   = document.getElementById('del-label');
+  const delError   = document.getElementById('del-error');
+  const delCancel  = document.getElementById('del-cancel');
+  const delConfirm = document.getElementById('del-confirm');
+  let delTarget = null;   // { id, row }
+
+  function closeDelModal() { if (delModal) delModal.classList.remove('open'); }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.delete-btn');
+    if (!btn || !delModal) return;
+    delTarget = { id: btn.dataset.id, row: btn.closest('tr') };
+    delLabel.textContent = btn.dataset.label || 'this project';
+    delError.hidden = true;
+    delError.textContent = '';
+    delConfirm.disabled = false;
+    delConfirm.textContent = 'Yes, delete permanently';
+    delModal.classList.add('open');
+  });
+
+  if (delCancel) delCancel.addEventListener('click', closeDelModal);
+  if (delModal) delModal.addEventListener('click', (e) => { if (e.target === delModal) closeDelModal(); });
+
+  if (delConfirm) delConfirm.addEventListener('click', async () => {
+    if (!delTarget) return;
+    delConfirm.disabled = true;
+    delConfirm.textContent = 'Deleting…';
+    try {
+      const r = await fetch('/job/' + encodeURIComponent(delTarget.id) + '/delete-cms', { method: 'POST' });
+      const d = await r.json();
+      if (d.ok) {
+        const idx = rows.indexOf(delTarget.row);
+        if (idx !== -1) rows.splice(idx, 1);
+        delTarget.row.remove();
+        closeDelModal();
+        applyFilter();
+      } else {
+        delError.textContent = d.error || 'Delete failed.';
+        delError.hidden = false;
+        delConfirm.disabled = false;
+        delConfirm.textContent = 'Yes, delete permanently';
+      }
+    } catch (err) {
+      delError.textContent = 'Network error deleting project.';
+      delError.hidden = false;
+      delConfirm.disabled = false;
+      delConfirm.textContent = 'Yes, delete permanently';
+    }
+  });
 })();
 </script>
 

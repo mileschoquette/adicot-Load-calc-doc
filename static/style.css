@@ -13,6 +13,7 @@
   --warn: #92400e;
   --warn-bg: #fef3c7;
   --unset-bg: #f4f4f5;
+  --expired-bg: #e4e4e7;
 }
 
 * { box-sizing: border-box; }
@@ -377,6 +378,7 @@ footer {
 .filter-swatch.stage-red    { background: var(--danger); }
 .filter-swatch.stage-yellow { background: var(--warn); }
 .filter-swatch.stage-unset  { background: var(--unset-bg); border: 1px solid var(--border); }
+.filter-swatch.stage-expired { background: var(--expired-bg); border: 1px solid var(--border); }
 
 /* ── Modal (invoice confirm) ── */
 .modal-overlay {

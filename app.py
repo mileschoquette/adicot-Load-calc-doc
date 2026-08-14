@@ -376,6 +376,34 @@ def crop_route():
 VALID_STAGES = {"green", "yellow", "red"}
 _STAGE_RANK = {"green": 0, "yellow": 1, "red": 2}
 
+# A project with no stage ever set, whose Wix record is this old, is treated
+# as "expired" — sorted last and hidden by default, same as invoiced.
+EXPIRE_AFTER_DAYS = 30
+_BUCKET_RANK = {"green": 0, "yellow": 1, "red": 2, "unset": 3, "expired": 4, "invoiced": 5}
+
+
+def _is_stale(created_date_str: str) -> bool:
+    """True if created_date_str (a Wix _createdDate ISO string) is EXPIRE_AFTER_DAYS
+    or more in the past. Missing/unparseable dates never count as stale, so a
+    project never silently expires just because we couldn't read its date."""
+    if not created_date_str:
+        return False
+    try:
+        created = datetime.datetime.fromisoformat(created_date_str.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return (datetime.datetime.now(datetime.timezone.utc) - created).days >= EXPIRE_AFTER_DAYS
+
+
+def _entry_bucket(e: dict) -> str:
+    """Which job-list filter bucket a project falls into. Invoiced takes
+    priority over expired, which takes priority over its plain stage."""
+    if e["invoiced"]:
+        return "invoiced"
+    if e["expired"]:
+        return "expired"
+    return e["stage"] or "unset"
+
 
 def _stage_registry_path() -> Path:
     return JOBS_DIR / "job_stages.json"
@@ -414,10 +442,12 @@ def _build_cms_entries() -> list[dict]:
         parsed = (secure_filename(_id) == _id
                   and (JOBS_DIR / _id / "report.json").exists())
         raw_stage = stage_reg.get(_id, {}).get("stage")
+        stage = raw_stage if raw_stage in VALID_STAGES else None
         entries.append({
             "_id": _id, "job_no": job_no, "address": addr,
             "title": title, "parsed": parsed,
-            "stage": raw_stage if raw_stage in VALID_STAGES else None,
+            "stage": stage,
+            "expired": stage is None and _is_stale(p.get("createdDate")),
             "invoiced": _id in inv_reg,
         })
     entries.sort(key=lambda e: (e["address"] or e["title"] or e["job_no"]).lower())
@@ -428,12 +458,14 @@ def _build_cms_entries() -> list[dict]:
 @_require_auth
 def index():
     """Landing page — the list of CMS (Wix) projects, plus Run a Temp Job.
-    Grouped by job-list stage (green, then yellow, then red, then unset),
+    Grouped by job-list bucket (green, yellow, red, unset, expired, invoiced),
     alphabetical within each group; invoices.html keeps _build_cms_entries()'s
     plain alphabetical order since this re-sort happens only here."""
     entries = _build_cms_entries()
+    for e in entries:
+        e["bucket"] = _entry_bucket(e)
     entries.sort(key=lambda e: (
-        _STAGE_RANK.get(e["stage"], 3),
+        _BUCKET_RANK.get(e["bucket"], 99),
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
     return render_template("cms_jobs.html", projects=entries)
@@ -456,6 +488,30 @@ def set_job_stage(wix_id: str):
                         "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     _save_stage_registry(reg)
     return jsonify({"ok": True, "stage": None if stage == "unset" else stage})
+
+
+@app.route("/job/<wix_id>/delete-cms", methods=["POST"])
+@_require_auth
+def delete_cms_project(wix_id: str):
+    """Delete a project from Wix (source of truth for the landing list) first;
+    only clean up local artifacts if that succeeds, so a failed Wix delete
+    doesn't silently orphan local data for a project that will still show up
+    next page load."""
+    if not wix_id:
+        return jsonify({"ok": False, "error": "Missing project id."}), 400
+    if not wix_client.delete_project(wix_id):
+        return jsonify({"ok": False, "error": "Could not delete from Wix. If this "
+                         "is the first attempt, check that the Wix API key has "
+                         "\"Manage\" permission for Data Items."}), 502
+    wix_client.invalidate_cache()
+    shutil.rmtree(_safe_job_path(wix_id), ignore_errors=True)
+    stage_reg = _load_stage_registry()
+    if stage_reg.pop(wix_id, None) is not None:
+        _save_stage_registry(stage_reg)
+    inv_reg = _load_invoice_registry()
+    if inv_reg.pop(wix_id, None) is not None:
+        _save_invoice_registry(inv_reg)
+    return jsonify({"ok": True})
 
 
 # ─── Routes: Star (Work Order / parse) tab ───────────────────────────
