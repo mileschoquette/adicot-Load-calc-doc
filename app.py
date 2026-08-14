@@ -474,6 +474,27 @@ def index():
     return render_template("cms_jobs.html", projects=entries)
 
 
+@app.route("/debug/wix-projects")
+@_require_auth
+def debug_wix_projects():
+    """Temporary diagnostic for the auto-expire feature: shows the raw
+    list_projects() output (including createdDate exactly as Wix returns it)
+    plus what _is_stale() computes from it, so we can see why a project isn't
+    being marked expired without needing direct Wix API access. Safe to
+    remove once expiry is confirmed working against real data."""
+    out = []
+    for p in wix_client.list_projects()[:10]:
+        created = p.get("createdDate")
+        out.append({
+            "job_no": p.get("jobNo"),
+            "address": p.get("projectAddress"),
+            "createdDate_raw": created,
+            "createdDate_type": type(created).__name__,
+            "is_stale": _is_stale(created),
+        })
+    return jsonify(out)
+
+
 @app.route("/job/<wix_id>/stage", methods=["POST"])
 @_require_auth
 def set_job_stage(wix_id: str):
