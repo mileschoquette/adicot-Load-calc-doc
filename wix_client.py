@@ -56,6 +56,17 @@ def _credentials() -> Optional[tuple[str, str]]:
     return api_key, site_id
 
 
+def _plain_date(value) -> str:
+    """Wix returns _createdDate as {"$date": "2026-08-10T14:16:56.926Z"} (Mongo-style
+    extended JSON), not a plain ISO string. Unwrap that shape; pass through a plain
+    string as-is; anything else (missing, unrecognized shape) becomes ""."""
+    if isinstance(value, dict):
+        return value.get("$date") or ""
+    if isinstance(value, str):
+        return value
+    return ""
+
+
 def _headers() -> Optional[dict]:
     creds = _credentials()
     if not creds:
@@ -145,7 +156,7 @@ def list_projects() -> list[dict]:
                     "projectAddress": data.get("projectAddress") or "",
                     "jobNo":          data.get("jobNo") or "",
                     "title":          data.get("title") or "",
-                    "createdDate":    data.get("_createdDate") or item.get("_createdDate") or "",
+                    "createdDate":    _plain_date(data.get("_createdDate") or item.get("_createdDate")),
                 })
 
             cursors = payload.get("pagingMetadata", {}).get("cursors") or {}
