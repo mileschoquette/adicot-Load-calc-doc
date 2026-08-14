@@ -495,11 +495,12 @@ def debug_wix_projects():
     return jsonify(out)
 
 
-@app.route("/debug/send-digest", methods=["POST"])
+@app.route("/debug/send-digest", methods=["GET", "POST"])
 @_require_auth
 def debug_send_digest():
     """Temporary: manually fire today's jobs digest email on demand, to verify
-    SMTP config and content without waiting for the 7 AM scheduler tick."""
+    SMTP config and content without waiting for the 7 AM scheduler tick. Accepts
+    GET too so it can be triggered by just visiting the URL in a browser."""
     ok = daily_digest.send_daily_digest()
     return jsonify({"ok": ok})
 
