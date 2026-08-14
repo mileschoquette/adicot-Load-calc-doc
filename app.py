@@ -495,6 +495,15 @@ def debug_wix_projects():
     return jsonify(out)
 
 
+@app.route("/debug/send-digest", methods=["POST"])
+@_require_auth
+def debug_send_digest():
+    """Temporary: manually fire today's jobs digest email on demand, to verify
+    SMTP config and content without waiting for the 7 AM scheduler tick."""
+    ok = daily_digest.send_daily_digest()
+    return jsonify({"ok": ok})
+
+
 @app.route("/job/<wix_id>/stage", methods=["POST"])
 @_require_auth
 def set_job_stage(wix_id: str):
@@ -3122,6 +3131,10 @@ def job_equip_download(job_id: str, fname: str):
     if not (out_dir / fname).exists():
         abort(404)
     return send_from_directory(out_dir, fname, as_attachment=True)
+
+
+import daily_digest
+daily_digest.start_scheduler()
 
 
 if __name__ == "__main__":

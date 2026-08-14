@@ -28,6 +28,8 @@ The three signed schedules are generated as Excel first (`schedule_xlsx.py`), th
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Full Drive service-account JSON as a string. Missing → Drive features degrade silently. |
 | `WIX_API_KEY`, `WIX_SITE_ID` | Wix CMS creds. Missing → project dropdown and spec content fall back to seed/empty. |
 | `CROP_TOKEN` | Shared token for the `/crop` route (Apps Script intake). Distinct from basic auth. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP creds for the daily jobs digest email (`email_client.py`). `SMTP_PORT` defaults to `587`; `SMTP_FROM` defaults to `SMTP_USER`. Missing → digest silently fails to send (logged as an error). |
+| `PUBLIC_BASE_URL` | Base URL used to build job links in the daily digest email. Defaults to `https://adicot-hvac.onrender.com`. |
 | `PORT` | Set by Render. |
 
 ## Architecture
@@ -64,6 +66,8 @@ jobs/<job_id>/
 - `validators.py` — strict HTML-vs-Wix comparison. Numbers-only, unit-agnostic, R↔U auto-conversion, empty Wix values skipped silently.
 - `wix_client.py` — mostly-read Wix Data v2 wrapper with a 5-minute per-worker TTL cache (`list_projects`, `get_project`), plus one write call (`delete_project`, requires "Manage" scope on `WIX_API_KEY` — the read calls only need "Read"). Returns `None`/`[]`/`False` on any error (don't raise from here).
 - `gdrive_client.py` — Drive read+write. Path convention: `1-Jobs/{Company}/{Job No}/4-Design/dm_hvac-loads1.html` (read) and `…/6-Submit/*.pdf` (write). `{Company}` is the first hyphen token of Job No. **1-Jobs must live on a Shared Drive** — service accounts have no personal quota. All calls use `corpora="allDrives"` + `includeItemsFromAllDrives=True` + `supportsAllDrives=True`. 15-min folder-id cache.
+- `email_client.py` — SMTP wrapper (`send_email`), stdlib `smtplib` only, no new dependency. Returns `False`/logs on any error (missing creds, auth failure, network) rather than raising.
+- `daily_digest.py` — builds and sends the daily jobs-list digest, reusing `app._build_cms_entries()`/`app._entry_bucket()` (via a deferred import to avoid a circular import with `app.py`). Runs an in-process background thread (`start_scheduler()`, started at the bottom of `app.py`) that checks the clock every 5 minutes and sends once per day at 7 AM `America/New_York`, deduped via `jobs/digest_state.json`. Not a Render Cron Job — a separate Cron Job resource can't mount the same persistent disk this app's registries live on.
 - `docs/snippets/app_spec_routes.py` — dead paste-in snippet of spec routes, confirmed unused and already drifted from the real code (references a nonexistent `spec_dxf` module); the live routes are in `app.py` (`/job/<id>/spec*`). Kept only as historical reference.
 - `docs/snippets/crop_route.py` — dead paste-in reference, confirmed unused and already drifted (documents a `"box"` JSON field the real route never accepts, only `"bbox"`); the live `/crop` route is in `app.py`. Kept only as historical reference.
 
