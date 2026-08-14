@@ -368,9 +368,40 @@ def crop_route():
 
 # ─── Routes: upload form ─────────────────────────────────────────────
 
+# Job-list workflow stage, keyed by Wix item id. Independent of QuickBooks
+# invoicing (see _invoice_registry_path below) — a project's stage and its
+# invoiced-ness are separate facts and neither is cleaned up when the other
+# changes. Absence of a key (or a value outside VALID_STAGES) means "unset";
+# there is no stored "unset" literal.
+VALID_STAGES = {"green", "yellow", "red"}
+_STAGE_RANK = {"green": 0, "yellow": 1, "red": 2}
+
+
+def _stage_registry_path() -> Path:
+    return JOBS_DIR / "job_stages.json"
+
+
+def _load_stage_registry() -> dict:
+    try:
+        return json.loads(_stage_registry_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_stage_registry(reg: dict) -> None:
+    path = _stage_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(reg, indent=2))
+    tmp.replace(path)
+
+
 def _build_cms_entries() -> list[dict]:
     """Projects from the Wix CMS for the landing list, each tagged with whether
-    a parsed workspace already exists for it (keyed by the Wix item id)."""
+    a parsed workspace already exists for it, its job-list stage, and whether
+    it's already been invoiced (all keyed by the Wix item id)."""
+    stage_reg = _load_stage_registry()
+    inv_reg = _load_invoice_registry()
     entries = []
     for p in wix_client.list_projects():
         _id = (p.get("_id") or "").strip()
@@ -382,9 +413,12 @@ def _build_cms_entries() -> list[dict]:
         # Parsed only if the id survives secure_filename (its workspace dir name).
         parsed = (secure_filename(_id) == _id
                   and (JOBS_DIR / _id / "report.json").exists())
+        raw_stage = stage_reg.get(_id, {}).get("stage")
         entries.append({
             "_id": _id, "job_no": job_no, "address": addr,
             "title": title, "parsed": parsed,
+            "stage": raw_stage if raw_stage in VALID_STAGES else None,
+            "invoiced": _id in inv_reg,
         })
     entries.sort(key=lambda e: (e["address"] or e["title"] or e["job_no"]).lower())
     return entries
@@ -393,8 +427,35 @@ def _build_cms_entries() -> list[dict]:
 @app.route("/")
 @_require_auth
 def index():
-    """Landing page — the list of CMS (Wix) projects, plus Run a Temp Job."""
-    return render_template("cms_jobs.html", projects=_build_cms_entries())
+    """Landing page — the list of CMS (Wix) projects, plus Run a Temp Job.
+    Grouped by job-list stage (green, then yellow, then red, then unset),
+    alphabetical within each group; invoices.html keeps _build_cms_entries()'s
+    plain alphabetical order since this re-sort happens only here."""
+    entries = _build_cms_entries()
+    entries.sort(key=lambda e: (
+        _STAGE_RANK.get(e["stage"], 3),
+        (e["address"] or e["title"] or e["job_no"]).lower(),
+    ))
+    return render_template("cms_jobs.html", projects=entries)
+
+
+@app.route("/job/<wix_id>/stage", methods=["POST"])
+@_require_auth
+def set_job_stage(wix_id: str):
+    """Set (or clear, via stage=unset) a project's job-list stage."""
+    if not wix_id:
+        return jsonify({"ok": False, "error": "Missing project id."}), 400
+    stage = request.form.get("stage", "").strip().lower()
+    if stage != "unset" and stage not in VALID_STAGES:
+        return jsonify({"ok": False, "error": "Invalid stage."}), 400
+    reg = _load_stage_registry()
+    if stage == "unset":
+        reg.pop(wix_id, None)
+    else:
+        reg[wix_id] = {"stage": stage,
+                        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    _save_stage_registry(reg)
+    return jsonify({"ok": True, "stage": None if stage == "unset" else stage})
 
 
 # ─── Routes: Star (Work Order / parse) tab ───────────────────────────
