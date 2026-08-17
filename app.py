@@ -2,6 +2,7 @@
 
 Routes (URL → view function name):
     /                                index           Jobs-in-CMS landing list (Wix projects)
+    /job/<wix_id>/notes              add_job_note    POST — append a note to a project's history
     /job/new-temp                    new_temp        POST — create a temp-job workspace
     /job/<job_id>/star               job_star        ★ Work Order / parse tab (per-job home)
     /job/<job_id>/parse              job_parse       POST — parse HTML (Drive or upload); unlocks tabs
@@ -427,12 +428,34 @@ def _save_stage_registry(reg: dict) -> None:
     tmp.replace(path)
 
 
+# Per-job note history, keyed by Wix item id. Append-only list of
+# {"text", "created_at"} — notes are never edited or deleted once added.
+def _notes_registry_path() -> Path:
+    return JOBS_DIR / "job_notes.json"
+
+
+def _load_notes_registry() -> dict:
+    try:
+        return json.loads(_notes_registry_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_notes_registry(reg: dict) -> None:
+    path = _notes_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(reg, indent=2))
+    tmp.replace(path)
+
+
 def _build_cms_entries() -> list[dict]:
     """Projects from the Wix CMS for the landing list, each tagged with whether
     a parsed workspace already exists for it, its job-list stage, and whether
     it's already been invoiced (all keyed by the Wix item id)."""
     stage_reg = _load_stage_registry()
     inv_reg = _load_invoice_registry()
+    notes_reg = _load_notes_registry()
     entries = []
     for p in wix_client.list_projects():
         _id = (p.get("_id") or "").strip()
@@ -452,6 +475,7 @@ def _build_cms_entries() -> list[dict]:
             "stage": stage,
             "expired": stage is None and _is_stale(p.get("createdDate")),
             "invoiced": _id in inv_reg,
+            "notes": notes_reg.get(_id, []),
         })
     entries.sort(key=lambda e: (e["address"] or e["title"] or e["job_no"]).lower())
     return entries
@@ -539,6 +563,23 @@ def set_job_stage(wix_id: str):
     return jsonify({"ok": True, "stage": None if stage == "unset" else stage})
 
 
+@app.route("/job/<wix_id>/notes", methods=["POST"])
+@_require_auth
+def add_job_note(wix_id: str):
+    """Append a note to a project's history. Notes are never edited or deleted
+    once added — the list is a running log, not a single mutable field."""
+    if not wix_id:
+        return jsonify({"ok": False, "error": "Missing project id."}), 400
+    text = request.form.get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "Note can't be empty."}), 400
+    reg = _load_notes_registry()
+    note = {"text": text, "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    reg.setdefault(wix_id, []).append(note)
+    _save_notes_registry(reg)
+    return jsonify({"ok": True, "note": note})
+
+
 @app.route("/job/<wix_id>/delete-cms", methods=["POST"])
 @_require_auth
 def delete_cms_project(wix_id: str):
@@ -557,6 +598,9 @@ def delete_cms_project(wix_id: str):
     stage_reg = _load_stage_registry()
     if stage_reg.pop(wix_id, None) is not None:
         _save_stage_registry(stage_reg)
+    notes_reg = _load_notes_registry()
+    if notes_reg.pop(wix_id, None) is not None:
+        _save_notes_registry(notes_reg)
     inv_reg = _load_invoice_registry()
     if inv_reg.pop(wix_id, None) is not None:
         _save_invoice_registry(inv_reg)

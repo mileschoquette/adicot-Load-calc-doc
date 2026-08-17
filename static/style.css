@@ -429,6 +429,15 @@ footer {
   border-radius: 4px;
   padding: 0.5rem 0.75rem;
 }
+.notes-preview {
+  max-width: 16rem;
+  white-space: normal;
+}
+.notes-history-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.notes-history-item:last-child { border-bottom: none; }
 .btn-ghost {
   background: #fff;
   border: 1px solid var(--border);

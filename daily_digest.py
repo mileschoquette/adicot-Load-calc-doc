@@ -72,6 +72,8 @@ def _render_body(entries: list[dict]) -> str:
         for e in group:
             label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
             lines.append(f"  {label} — {base}/job/{e['_id']}/star")
+            if e.get("notes"):
+                lines.append(f"      note: {e['notes'][-1]['text']}")
         lines.append("")
     if not lines:
         lines = ["No open jobs need attention today."]
