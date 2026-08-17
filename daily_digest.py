@@ -62,7 +62,7 @@ def _mark_sent(today: str) -> None:
 
 
 def _render_body(entries: list[dict]) -> str:
-    base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-hvac.onrender.com")
+    base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
     lines = []
     for bucket in ("green", "yellow", "red", "unset"):
         group = [e for e in entries if e["bucket"] == bucket]

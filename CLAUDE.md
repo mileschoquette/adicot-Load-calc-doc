@@ -29,7 +29,7 @@ The three signed schedules are generated as Excel first (`schedule_xlsx.py`), th
 | `WIX_API_KEY`, `WIX_SITE_ID` | Wix CMS creds. Missing → project dropdown and spec content fall back to seed/empty. |
 | `CROP_TOKEN` | Shared token for the `/crop` route (Apps Script intake). Distinct from basic auth. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP creds for the daily jobs digest email (`email_client.py`). `SMTP_PORT` defaults to `587`; `SMTP_FROM` defaults to `SMTP_USER`. Missing → digest silently fails to send (logged as an error). |
-| `PUBLIC_BASE_URL` | Base URL used to build job links in the daily digest email. Defaults to `https://adicot-hvac.onrender.com`. |
+| `PUBLIC_BASE_URL` | Base URL used to build job links in the daily digest email. Defaults to `https://adicot-load-calc-doc.onrender.com`. |
 | `PORT` | Set by Render. |
 
 ## Architecture

@@ -19,7 +19,7 @@ APP_PASSWORD=mySecretPassword python app.py
 
 ## Deploying to Render (publicly accessible URL)
 
-This puts the app at something like `https://adicot-hvac.onrender.com`, which you can link to from the Adicot Wix site.
+This puts the app at something like `https://adicot-load-calc-doc.onrender.com`, which you can link to from the Adicot Wix site.
 
 ### One-time setup
 
@@ -38,7 +38,7 @@ This puts the app at something like `https://adicot-hvac.onrender.com`, which yo
 
 ### What you get
 
-- Public URL like `https://adicot-hvac.onrender.com`
+- Public URL like `https://adicot-load-calc-doc.onrender.com`
 - 1 GB persistent disk at `/var/data/jobs` so the past-jobs list survives restarts
 - Free tier: spins down after 15 minutes of inactivity (first request after that takes ~30 seconds to wake up). Upgrade to the $7/mo Starter plan for always-on.
 
@@ -56,7 +56,7 @@ Render auto-deploys on push to the main branch.
 In the Wix editor:
 1. Add a button (or text link) anywhere on the site
 2. Set its action to "Link to web address"
-3. Use the Render URL: `https://adicot-hvac.onrender.com`
+3. Use the Render URL: `https://adicot-load-calc-doc.onrender.com`
 4. Check "Open in new tab"
 
 Engineers click the link, get the HTTP basic auth prompt (username: `adicot`, password: whatever you set), and use the tool.
