@@ -74,8 +74,6 @@ def _render_body(entries: list[dict], person: str | None = None) -> str:
         for e in group:
             label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
             lines.append(f"  {label} — {base}/job/{e['_id']}/star")
-            if e.get("notes"):
-                lines.append(f"      note: {e['notes'][-1]['text']}")
         lines.append("")
     # Personal section is appended (not folded into the buckets above) so every
     # recipient still gets the same shared list; only Miles/Phoebe/Adi's own
@@ -87,6 +85,8 @@ def _render_body(entries: list[dict], person: str | None = None) -> str:
             for e in mine:
                 label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
                 lines.append(f"  {label} — {base}/job/{e['_id']}/star")
+                if e.get("notes"):
+                    lines.append(f"      note: {e['notes'][-1]['text']}")
             lines.append("")
     if not lines:
         lines = ["No open jobs need attention today."]
