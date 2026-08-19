@@ -449,6 +449,30 @@ def _save_notes_registry(reg: dict) -> None:
     tmp.replace(path)
 
 
+# Who's on the hook for a job, keyed by Wix item id → list of person keys.
+# Any subset of the three is allowed; absence of a key means unassigned.
+VALID_ASSIGNEES = {"miles", "phoebe", "adi"}
+
+
+def _assigned_registry_path() -> Path:
+    return JOBS_DIR / "job_assigned.json"
+
+
+def _load_assigned_registry() -> dict:
+    try:
+        return json.loads(_assigned_registry_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_assigned_registry(reg: dict) -> None:
+    path = _assigned_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(reg, indent=2))
+    tmp.replace(path)
+
+
 def _build_cms_entries() -> list[dict]:
     """Projects from the Wix CMS for the landing list, each tagged with whether
     a parsed workspace already exists for it, its job-list stage, and whether
@@ -456,6 +480,7 @@ def _build_cms_entries() -> list[dict]:
     stage_reg = _load_stage_registry()
     inv_reg = _load_invoice_registry()
     notes_reg = _load_notes_registry()
+    assigned_reg = _load_assigned_registry()
     entries = []
     for p in wix_client.list_projects():
         _id = (p.get("_id") or "").strip()
@@ -476,6 +501,7 @@ def _build_cms_entries() -> list[dict]:
             "expired": stage is None and _is_stale(p.get("createdDate")),
             "invoiced": _id in inv_reg,
             "notes": notes_reg.get(_id, []),
+            "assigned_to": assigned_reg.get(_id, []),
         })
     entries.sort(key=lambda e: (e["address"] or e["title"] or e["job_no"]).lower())
     return entries
@@ -580,6 +606,22 @@ def add_job_note(wix_id: str):
     return jsonify({"ok": True, "note": note})
 
 
+@app.route("/job/<wix_id>/assigned", methods=["POST"])
+@_require_auth
+def set_job_assigned(wix_id: str):
+    """Set (or clear) which of Miles/Phoebe/Adi are assigned to a project."""
+    if not wix_id:
+        return jsonify({"ok": False, "error": "Missing project id."}), 400
+    assigned = [a for a in request.form.getlist("assigned") if a in VALID_ASSIGNEES]
+    reg = _load_assigned_registry()
+    if assigned:
+        reg[wix_id] = assigned
+    else:
+        reg.pop(wix_id, None)
+    _save_assigned_registry(reg)
+    return jsonify({"ok": True, "assigned": assigned})
+
+
 @app.route("/job/<wix_id>/delete-cms", methods=["POST"])
 @_require_auth
 def delete_cms_project(wix_id: str):
@@ -601,6 +643,9 @@ def delete_cms_project(wix_id: str):
     notes_reg = _load_notes_registry()
     if notes_reg.pop(wix_id, None) is not None:
         _save_notes_registry(notes_reg)
+    assigned_reg = _load_assigned_registry()
+    if assigned_reg.pop(wix_id, None) is not None:
+        _save_assigned_registry(assigned_reg)
     inv_reg = _load_invoice_registry()
     if inv_reg.pop(wix_id, None) is not None:
         _save_invoice_registry(inv_reg)

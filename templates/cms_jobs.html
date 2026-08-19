@@ -17,7 +17,7 @@
              placeholder="Filter by address, job no, or title…" autocomplete="off">
       <table class="jobs cms-jobs">
         <thead>
-          <tr><th>Job No</th><th>Address / Title</th><th>Stage</th><th>Notes</th><th>Status</th></tr>
+          <tr><th>Job No</th><th>Address / Title</th><th>Stage</th><th>Assigned</th><th>Notes</th><th>Status</th></tr>
         </thead>
         <tbody>
           {% for p in projects %}
@@ -41,6 +41,13 @@
                   <option value="red"    {{ 'selected' if p.stage == 'red' }}>Waiting on client</option>
                 </select>
                 {% if p.expired %}<div class="muted small">Expired</div>{% endif %}
+              </td>
+              <td class="assign-cell" data-id="{{ p._id }}">
+                {% for key, label in [('miles', 'Miles'), ('phoebe', 'Phoebe'), ('adi', 'Adi')] %}
+                  <label class="checkbox assign-check">
+                    <input type="checkbox" value="{{ key }}" {{ 'checked' if key in p.assigned_to }}> {{ label }}
+                  </label>
+                {% endfor %}
               </td>
               <td>
                 <div class="notes-preview small {{ '' if p.notes else 'muted' }}">{{ p.notes[-1].text | truncate(60) if p.notes else '—' }}</div>
@@ -177,6 +184,31 @@
   });
   // Track each select's last-known-good value so a failed save can revert to it.
   document.querySelectorAll('.stage-select').forEach(sel => { sel.dataset.prevValue = sel.value; });
+
+  // Assigned-to checkboxes — saves immediately, no page reload.
+  document.addEventListener('change', async (e) => {
+    const box = e.target.closest('.assign-cell input[type="checkbox"]');
+    if (!box) return;
+    const cell = box.closest('.assign-cell');
+    const id = cell.dataset.id;
+    const boxes = Array.from(cell.querySelectorAll('input[type="checkbox"]'));
+    boxes.forEach(b => b.disabled = true);
+    try {
+      const body = new URLSearchParams();
+      boxes.filter(b => b.checked).forEach(b => body.append('assigned', b.value));
+      const r = await fetch('/job/' + encodeURIComponent(id) + '/assigned', { method: 'POST', body });
+      const d = await r.json();
+      if (!d.ok) {
+        box.checked = !box.checked;
+        alert(d.error || 'Failed to save assignment.');
+      }
+    } catch (err) {
+      box.checked = !box.checked;
+      alert('Network error saving assignment.');
+    } finally {
+      boxes.forEach(b => b.disabled = false);
+    }
+  });
 
   // Delete-project modal.
   const delModal   = document.getElementById('del-modal');

@@ -1,8 +1,10 @@
 """Daily jobs-list email digest — content + in-process scheduler.
 
-Sends once a day at SEND_HOUR (America/New_York) to RECIPIENTS, grouped into
-the same buckets shown on the Jobs landing page (green/yellow/red/unset),
-excluding invoiced and expired projects. Runs as a background thread inside
+Sends once a day at SEND_HOUR (America/New_York), one personalized email per
+person in PERSON_EMAILS, grouped into the same buckets shown on the Jobs
+landing page (green/yellow/red/unset), excluding invoiced and expired
+projects. Each person's copy also gets a "YOUR TASKS" section for jobs
+assigned to them (job_assigned.json), when they have any. Runs as a background thread inside
 the existing single-worker web service rather than a separate Render Cron
 Job, since a separate Cron Job resource can't mount the same persistent disk
 this app keeps job_stages.json / qbo_invoices_*.json on.
@@ -30,7 +32,7 @@ import email_client
 log = logging.getLogger(__name__)
 
 JOBS_DIR = Path(os.environ.get("JOBS_DIR", "./jobs"))
-RECIPIENTS = ["mfc@adicot.com", "agc@adicot.com", "pc@adicot.com"]
+PERSON_EMAILS = {"miles": "mfc@adicot.com", "adi": "agc@adicot.com", "phoebe": "pc@adicot.com"}
 EXCLUDED_BUCKETS = {"invoiced", "expired"}
 SEND_HOUR = 7
 SEND_TZ = ZoneInfo("America/New_York")
@@ -61,7 +63,7 @@ def _mark_sent(today: str) -> None:
     path.write_text(json.dumps({"last_sent": today}))
 
 
-def _render_body(entries: list[dict]) -> str:
+def _render_body(entries: list[dict], person: str | None = None) -> str:
     base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
     lines = []
     for bucket in ("green", "yellow", "red", "unset"):
@@ -75,13 +77,27 @@ def _render_body(entries: list[dict]) -> str:
             if e.get("notes"):
                 lines.append(f"      note: {e['notes'][-1]['text']}")
         lines.append("")
+    # Personal section is appended (not folded into the buckets above) so every
+    # recipient still gets the same shared list; only Miles/Phoebe/Adi's own
+    # copy gets this extra section, and only when they actually have a task.
+    if person:
+        mine = [e for e in entries if person in e.get("assigned_to", [])]
+        if mine:
+            lines.append("YOUR TASKS:")
+            for e in mine:
+                label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
+                lines.append(f"  {label} — {base}/job/{e['_id']}/star")
+            lines.append("")
     if not lines:
         lines = ["No open jobs need attention today."]
     return "\n".join(lines)
 
 
 def send_daily_digest() -> bool:
-    """Build and send today's digest. Returns True if the email was sent."""
+    """Build and send today's digest — one personalized email per person in
+    PERSON_EMAILS, each with the full shared list plus their own "Your tasks"
+    section if they have any assignments. Returns True only if every send
+    succeeded."""
     import app  # deferred: app.py is fully loaded by the time this runs
 
     entries = app._build_cms_entries()
@@ -93,12 +109,14 @@ def send_daily_digest() -> bool:
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
 
-    body = _render_body(included)
     subject = f"Adicot Jobs Daily Digest — {datetime.date.today().isoformat()}"
-    ok = email_client.send_email(RECIPIENTS, subject, body)
-    if not ok:
-        log.error("Daily digest email failed to send.")
-    return ok
+    ok_all = True
+    for key, email in PERSON_EMAILS.items():
+        body = _render_body(included, person=key)
+        if not email_client.send_email([email], subject, body):
+            log.error("Daily digest email failed to send to %s.", key)
+            ok_all = False
+    return ok_all
 
 
 def _scheduler_loop():
