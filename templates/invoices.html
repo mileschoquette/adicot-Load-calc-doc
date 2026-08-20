@@ -41,7 +41,7 @@
                       data-jobno="{{ p.job_no }}"
                       data-doc="{{ p.invoice.doc_number or p.invoice.invoice_id }}"
                       {% if not qbo_status.connected %}disabled{% endif %}>
-                + Attach PDFs
+                + Attach files
               </button>
             {% else %}
               <button type="button" class="btn-primary inv-btn"
@@ -72,6 +72,16 @@
         <label for="inv-customer">Customer</label>
         <select id="inv-customer"></select>
       </div>
+      <div class="field" id="inv-new-customer" hidden>
+        <label for="new-cust-name">New client — display name</label>
+        <input type="text" id="new-cust-name">
+        <label for="new-cust-company">Company (optional)</label>
+        <input type="text" id="new-cust-company">
+        <label for="new-cust-email">Email (optional)</label>
+        <input type="email" id="new-cust-email">
+        <div class="modal-error" id="new-cust-error" hidden></div>
+        <button type="button" class="btn-ghost" id="new-cust-create">Create client</button>
+      </div>
       <div class="field">
         <label for="inv-item">Service item</label>
         <select id="inv-item"></select>
@@ -86,7 +96,7 @@
       </div>
     </div>
     <div class="field" id="inv-pdf-field" hidden>
-      <label>Attach PDFs <span class="optional">(optional)</span></label>
+      <label>Attach files <span class="optional">(optional)</span></label>
       <div id="inv-pdf-list"></div>
     </div>
 
@@ -128,10 +138,17 @@
   const titleEl  = document.getElementById('inv-modal-title');
   const createFields = document.getElementById('inv-create-fields');
   const draftNote = document.getElementById('inv-draft-note');
+  const newCustBox     = document.getElementById('inv-new-customer');
+  const newCustName    = document.getElementById('new-cust-name');
+  const newCustCompany = document.getElementById('new-cust-company');
+  const newCustEmail   = document.getElementById('new-cust-email');
+  const newCustError   = document.getElementById('new-cust-error');
+  const newCustCreate  = document.getElementById('new-cust-create');
 
   let current = null;            // {id, jobno, label, doc}
   let mode = 'create';           // 'create' | 'attach'
   let listsLoaded = false;
+  let lastPrepare = null;        // most recent /api/qbo/prepare response (create mode)
 
   function opt(value, text) { const o = document.createElement('option'); o.value = value; o.textContent = text; return o; }
 
@@ -142,6 +159,7 @@
     selCust.innerHTML = ''; selItem.innerHTML = '';
     selCust.appendChild(opt('', '— select customer —'));
     for (const c of d.customers) selCust.appendChild(opt(c.id, c.name + (c.company && c.company !== c.name ? ' (' + c.company + ')' : '')));
+    selCust.appendChild(opt('__new__', '+ Add new client…'));
     selItem.appendChild(opt('', '— select service item —'));
     for (const it of d.items) selItem.appendChild(opt(it.id, it.name + (it.price ? '  ($' + it.price + ')' : '')));
     listsLoaded = true;
@@ -165,7 +183,7 @@
       }
       pdfField.hidden = false;
     } else if (mode === 'attach') {
-      pdfList.innerHTML = '<p class="muted small">No PDFs in the Google Drive 6-Submit folder for this project yet.</p>';
+      pdfList.innerHTML = '<p class="muted small">No files in the Google Drive 6-Submit folder for this project yet.</p>';
       pdfField.hidden = false;
     } else {
       pdfField.hidden = true;
@@ -176,7 +194,7 @@
     return '<a href="' + inv.url + '" target="_blank" rel="noopener">'
       + '<span class="badge badge-ok">Invoiced</span> #' + (inv.doc_number || inv.invoice_id) + '</a> '
       + '<button type="button" class="link-btn inv-attach-btn" data-id="' + id + '" data-jobno="'
-      + (jobno || '') + '" data-doc="' + (inv.doc_number || inv.invoice_id) + '">+ Attach PDFs</button>';
+      + (jobno || '') + '" data-doc="' + (inv.doc_number || inv.invoice_id) + '">+ Attach files</button>';
   }
 
   async function openModal(btn, m) {
@@ -189,7 +207,7 @@
     pdfList.innerHTML = ''; pdfField.hidden = true;
 
     if (mode === 'attach') {
-      titleEl.textContent = 'Attach PDFs to invoice #' + (current.doc || '');
+      titleEl.textContent = 'Attach files to invoice #' + (current.doc || '');
       createFields.hidden = true;
       draftNote.hidden = true;
       btnCreate.textContent = 'Attach selected';
@@ -207,10 +225,12 @@
     btnCreate.textContent = 'Yes, create invoice';
     await loadLists();
     selCust.value = ''; selItem.value = ''; inAmount.value = ''; inDesc.value = '';
+    newCustBox.hidden = true;
     modal.classList.add('open');
     try {
       const r = await fetch('/api/qbo/prepare/' + encodeURIComponent(current.id));
       const d = await r.json();
+      lastPrepare = d;
       if (d.total_cost != null && d.total_cost !== '') inAmount.value = d.total_cost;
       if (d.description) inDesc.value = d.description;
       if (d.suggested_customer_id) selCust.value = String(d.suggested_customer_id);
@@ -219,7 +239,54 @@
     } catch (e) { /* leave fields blank for manual entry */ }
   }
 
-  // Delegated so dynamically-added "+ Attach PDFs" buttons work too.
+  selCust.addEventListener('change', () => {
+    if (selCust.value === '__new__') {
+      newCustBox.hidden = false;
+      newCustName.value = (lastPrepare && (lastPrepare.client_name || lastPrepare.company)) || '';
+      newCustCompany.value = (lastPrepare && lastPrepare.company) || '';
+      newCustEmail.value = (lastPrepare && lastPrepare.email) || '';
+    } else {
+      newCustBox.hidden = true;
+    }
+  });
+
+  newCustCreate.addEventListener('click', async () => {
+    newCustError.hidden = true; newCustError.textContent = '';
+    const displayName = newCustName.value.trim();
+    if (!displayName) {
+      newCustError.textContent = 'Display name is required.';
+      newCustError.hidden = false;
+      return;
+    }
+    newCustCreate.disabled = true;
+    newCustCreate.textContent = 'Creating…';
+    try {
+      const body = new URLSearchParams({
+        display_name: displayName,
+        company: newCustCompany.value.trim(),
+        email: newCustEmail.value.trim(),
+      });
+      const r = await fetch('/api/qbo/customers', { method: 'POST', body });
+      const d = await r.json();
+      if (d.ok) {
+        selCust.appendChild(opt(d.id, d.name + (d.company && d.company !== d.name ? ' (' + d.company + ')' : '')));
+        selCust.value = String(d.id);
+        newCustBox.hidden = true;
+        newCustName.value = ''; newCustCompany.value = ''; newCustEmail.value = '';
+      } else {
+        newCustError.textContent = d.error || 'Failed to create client.';
+        newCustError.hidden = false;
+      }
+    } catch (e) {
+      newCustError.textContent = 'Network error creating client.';
+      newCustError.hidden = false;
+    } finally {
+      newCustCreate.disabled = false;
+      newCustCreate.textContent = 'Create client';
+    }
+  });
+
+  // Delegated so dynamically-added "+ Attach files" buttons work too.
   document.addEventListener('click', (e) => {
     const createBtn = e.target.closest('.inv-btn');
     if (createBtn) return openModal(createBtn, 'create');
@@ -252,6 +319,7 @@
       return;
     }
 
+    if (selCust.value === '__new__') return showError('Finish adding the new client first, or pick an existing one.');
     if (!selCust.value) return showError('Pick a customer.');
     if (!selItem.value) return showError('Pick a service item.');
     if (!inAmount.value || Number(inAmount.value) <= 0) return showError('Enter an amount greater than 0.');

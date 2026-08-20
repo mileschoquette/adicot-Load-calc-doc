@@ -1013,7 +1013,6 @@ def generate_pdfs(job_id: str):
     elif not drive_folder_id and gdrive_client._parse_company_from_job_no(wix_job_no) is None:
         drive_push = {"status": "skipped", "reason": f"could not parse company from Job No '{wix_job_no}'"}
     else:
-        _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         upload_targets = list(out_dir.glob("*.pdf"))
         for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
             upload_targets += out_dir.glob(f"*{suffix}")
@@ -1846,6 +1845,21 @@ def api_qbo_lists():
                     "items": qbo.list_service_items()})
 
 
+@app.route("/api/qbo/customers", methods=["POST"])
+@_require_auth
+def api_qbo_create_customer():
+    """Create a new QBO customer from the invoice modal's inline 'add client' form."""
+    if not qbo.connection_status().get("connected"):
+        return jsonify({"ok": False, "error": "Not connected to QuickBooks."}), 400
+    display_name = request.form.get("display_name", "").strip()
+    company = request.form.get("company", "").strip()
+    email = request.form.get("email", "").strip()
+    if not display_name:
+        return jsonify({"ok": False, "error": "Display name is required."}), 400
+    result = qbo.create_customer(display_name, company_name=company, email=email)
+    return jsonify(result), (200 if result.get("ok") else 502)
+
+
 def _job_drive_folder_id(wix_id: str) -> Optional[str]:
     """The manually-chosen Drive job-folder id saved on a project (from its job
     meta), or None. Safe to call even if the job has no workspace yet."""
@@ -1858,25 +1872,31 @@ def _job_drive_folder_id(wix_id: str) -> Optional[str]:
         return None
 
 
-def _drive_submit_pdfs(job_no: str, folder_id: Optional[str] = None) -> list[dict]:
-    """PDFs in the job's Google Drive 6-Submit folder as [{id, name}]. `folder_id`
-    (the chosen job folder) overrides the Job-No name walk."""
-    pdfs = []
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _drive_submit_files(job_no: str, folder_id: Optional[str] = None) -> list[dict]:
+    """PDFs and Excel files in the job's Google Drive 6-Submit folder as
+    [{id, name}]. `folder_id` (the chosen job folder) overrides the Job-No name walk."""
+    files = []
     for f in gdrive_client.list_submit_files(job_no, folder_id=folder_id):
         name = (f.get("name") or "")
-        if name.lower().endswith(".pdf") or f.get("mimeType") == "application/pdf":
-            pdfs.append({"id": f.get("id"), "name": name})
-    pdfs.sort(key=lambda p: p["name"].lower())
-    return pdfs
+        lower = name.lower()
+        mime = f.get("mimeType")
+        if lower.endswith(".pdf") or mime == "application/pdf" \
+                or lower.endswith(".xlsx") or mime == _XLSX_MIME:
+            files.append({"id": f.get("id"), "name": name})
+    files.sort(key=lambda p: p["name"].lower())
+    return files
 
 
-def _attach_drive_pdfs(invoice_id: str, job_no: str, file_ids: list[str],
-                       folder_id: Optional[str] = None):
-    """Download the selected 6-Submit PDFs from Drive and attach them to the QBO
+def _attach_drive_files(invoice_id: str, job_no: str, file_ids: list[str],
+                        folder_id: Optional[str] = None):
+    """Download the selected 6-Submit files from Drive and attach them to the QBO
     invoice. Only ids that belong to this job's 6-Submit folder are honored
     (whitelist). Returns (attached_names, errors)."""
     index = {f["id"]: f["name"]
-             for f in _drive_submit_pdfs(job_no, folder_id=folder_id) if f.get("id")}
+             for f in _drive_submit_files(job_no, folder_id=folder_id) if f.get("id")}
     attached, errors = [], []
     for fid in file_ids:
         name = index.get(fid)
@@ -1886,7 +1906,8 @@ def _attach_drive_pdfs(invoice_id: str, job_no: str, file_ids: list[str],
         if data is None:
             errors.append({"name": name, "error": "Drive download failed"})
             continue
-        res = qbo.attach_file(invoice_id, name, data)
+        content_type = _XLSX_MIME if name.lower().endswith(".xlsx") else "application/pdf"
+        res = qbo.attach_file(invoice_id, name, data, content_type=content_type)
         if res.get("ok"):
             attached.append(name)
         else:
@@ -1899,6 +1920,7 @@ def _attach_drive_pdfs(invoice_id: str, job_no: str, file_ids: list[str],
 def api_qbo_prepare(wix_id: str):
     """Billing fields + a suggested customer for one project (modal pre-fill)."""
     rec = wix_client.get_project(wix_id) or {}
+    client_name = (rec.get("clientName") or "").strip()
     company = (rec.get("clientCompany") or "").strip()
     code = (rec.get("clientCode") or "").strip()
     email = (rec.get("clientEmail") or "").strip()
@@ -1913,6 +1935,7 @@ def api_qbo_prepare(wix_id: str):
 
     return jsonify({
         "job_no":      job_no,
+        "client_name": client_name,
         "company":     company,
         "client_code": code,
         "email":       email,
@@ -1920,7 +1943,7 @@ def api_qbo_prepare(wix_id: str):
         "description": (rec.get("productService") or rec.get("description") or "").strip(),
         "suggested_customer_id": suggested,
         "already_invoiced": wix_id in _load_invoice_registry(),
-        "pdfs": _drive_submit_pdfs(job_no, folder_id=_job_drive_folder_id(wix_id)),
+        "pdfs": _drive_submit_files(job_no, folder_id=_job_drive_folder_id(wix_id)),
     })
 
 
@@ -1976,9 +1999,9 @@ def create_invoice_route(wix_id: str):
 
     invoice_id = result["invoice_id"]
 
-    # Attach selected 6-Submit PDFs from Drive (best-effort — a failed attach
+    # Attach selected 6-Submit files from Drive (best-effort — a failed attach
     # never undoes the invoice).
-    attached, attach_errors = _attach_drive_pdfs(
+    attached, attach_errors = _attach_drive_files(
         invoice_id, job_no, request.form.getlist("pdfs"),
         folder_id=_job_drive_folder_id(wix_id))
 
@@ -2011,11 +2034,11 @@ def attach_to_invoice_route(wix_id: str):
 
     selected = request.form.getlist("pdfs")
     if not selected:
-        return jsonify({"ok": False, "error": "Select at least one PDF to attach."}), 400
+        return jsonify({"ok": False, "error": "Select at least one file to attach."}), 400
 
     # Job No drives the Drive 6-Submit lookup; fall back to the live Wix record.
     job_no = rec.get("job_no") or (wix_client.get_project(wix_id) or {}).get("jobNo", "")
-    attached, attach_errors = _attach_drive_pdfs(
+    attached, attach_errors = _attach_drive_files(
         rec["invoice_id"], job_no, selected, folder_id=_job_drive_folder_id(wix_id))
 
     if not attached:

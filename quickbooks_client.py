@@ -492,6 +492,42 @@ def create_invoice(customer_id: str, item_id: str, amount, *,
             "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
 
 
+def create_customer(display_name: str, company_name: str = "", email: str = "") -> dict:
+    """Create a new QBO customer. Returns {ok: True, id, name, company, email} or
+    {ok: False, error} — e.g. a duplicate DisplayName (QBO Fault code 6240)."""
+    display_name = (display_name or "").strip()
+    if not display_name:
+        return {"ok": False, "error": "Display name is required"}
+    body: dict = {"DisplayName": display_name}
+    if company_name:
+        body["CompanyName"] = company_name
+    if email:
+        body["PrimaryEmailAddr"] = {"Address": email}
+
+    resp = _request("POST", "customer", json_body=body)
+    if resp is None:
+        return {"ok": False, "error": "not connected to QuickBooks / network error"}
+    if not resp.ok:
+        log.error("QBO customer create %s (tid=%s): %s",
+                  resp.status_code, _tid(resp), resp.text[:400])
+        err = f"QuickBooks {resp.status_code}: {resp.text[:400]}"
+        try:
+            fault = (resp.json().get("Fault") or {}).get("Error", [{}])[0]
+            if fault.get("code") == "6240":
+                err = f'A customer named "{display_name}" already exists in QuickBooks.'
+            elif fault.get("Message"):
+                err = fault["Message"]
+        except (ValueError, KeyError, IndexError):
+            pass
+        return {"ok": False, "error": err}
+
+    cust = (resp.json() or {}).get("Customer", {})
+    return {"ok": True, "id": cust.get("Id"),
+            "name": cust.get("DisplayName") or cust.get("CompanyName") or "",
+            "company": cust.get("CompanyName") or "",
+            "email": (cust.get("PrimaryEmailAddr") or {}).get("Address", "")}
+
+
 def attach_file(invoice_id: str, filename: str, content: bytes,
                 content_type: str = "application/pdf") -> dict:
     """Upload a file and link it to an invoice via the Attachable/upload API.
