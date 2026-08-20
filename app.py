@@ -53,6 +53,7 @@ import datetime
 import functools
 import io
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -1876,16 +1877,10 @@ _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _drive_submit_files(job_no: str, folder_id: Optional[str] = None) -> list[dict]:
-    """PDFs and Excel files in the job's Google Drive 6-Submit folder as
-    [{id, name}]. `folder_id` (the chosen job folder) overrides the Job-No name walk."""
-    files = []
-    for f in gdrive_client.list_submit_files(job_no, folder_id=folder_id):
-        name = (f.get("name") or "")
-        lower = name.lower()
-        mime = f.get("mimeType")
-        if lower.endswith(".pdf") or mime == "application/pdf" \
-                or lower.endswith(".xlsx") or mime == _XLSX_MIME:
-            files.append({"id": f.get("id"), "name": name})
+    """Every file in the job's Google Drive 6-Submit folder as [{id, name}], any
+    type. `folder_id` (the chosen job folder) overrides the Job-No name walk."""
+    files = [{"id": f.get("id"), "name": f.get("name") or ""}
+             for f in gdrive_client.list_submit_files(job_no, folder_id=folder_id)]
     files.sort(key=lambda p: p["name"].lower())
     return files
 
@@ -1906,7 +1901,7 @@ def _attach_drive_files(invoice_id: str, job_no: str, file_ids: list[str],
         if data is None:
             errors.append({"name": name, "error": "Drive download failed"})
             continue
-        content_type = _XLSX_MIME if name.lower().endswith(".xlsx") else "application/pdf"
+        content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
         res = qbo.attach_file(invoice_id, name, data, content_type=content_type)
         if res.get("ok"):
             attached.append(name)
