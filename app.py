@@ -1007,6 +1007,45 @@ def _config_and_engineer_from_meta(meta: dict) -> tuple["hp.ProjectConfig", "hp.
     return config, engineer
 
 
+def _push_deliverables_to_drive(wix_job_no: str, drive_folder_id: str | None,
+                                 targets: list[Path]) -> dict:
+    """Upload the given out_dir files to the job's Drive 6-Submit folder.
+    Returns a dict shaped for meta["drive_push"] / the results.html banner."""
+    if not wix_job_no and not drive_folder_id:
+        return {"status": "skipped", "reason": "no Wix project linked (or Wix project has no Job No)"}
+    if not drive_folder_id and gdrive_client._parse_company_from_job_no(wix_job_no) is None:
+        return {"status": "skipped", "reason": f"could not parse company from Job No '{wix_job_no}'"}
+
+    drive_push: dict = {"status": "skipped"}
+    pdf_files = []
+    for p in sorted(targets):
+        mime = _XLSX_MIME if p.suffix == ".xlsx" else "application/pdf"
+        try:
+            pdf_files.append((p.name, p.read_bytes(), mime))
+        except Exception as e:
+            drive_push.setdefault("read_errors", []).append({"name": p.name, "message": str(e)})
+
+    if not pdf_files:
+        return {"status": "error", "reason": "No deliverable files found to upload"}
+
+    try:
+        upload_result = gdrive_client.upload_files(wix_job_no, pdf_files, folder_id=drive_folder_id)
+        drive_push = {
+            "status": "success" if upload_result["ok"] else "partial",
+            "folder_url": upload_result.get("folder_url"),
+            "uploaded": upload_result.get("uploaded", []),
+            "errors": upload_result.get("errors", []),
+            "job_no": wix_job_no,
+        }
+        if not upload_result["ok"] and not upload_result.get("uploaded"):
+            drive_push["status"] = "error"
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"DRIVE PUSH FAILURE: {tb}", flush=True)
+        drive_push = {"status": "error", "reason": f"{type(e).__name__}: {e}", "job_no": wix_job_no}
+    return drive_push
+
+
 @app.route("/job/<job_id>/generate-pdfs", methods=["POST"])
 @_require_auth
 def generate_pdfs(job_id: str):
@@ -1062,48 +1101,15 @@ def generate_pdfs(job_id: str):
     # Drive push so it rides along with the *.pdf upload below.
     _rebuild_combined(job_dir, meta, appendix=appendix)
 
-    drive_push: dict = {"status": "skipped"}
     wix_snapshot = meta.get("wix_snapshot") or {}
     wix_job_no = (wix_snapshot.get("jobNo") or "").strip()
     drive_folder_id = meta.get("drive_folder_id")   # manually chosen job folder, if any
 
-    if not wix_job_no and not drive_folder_id:
-        drive_push = {"status": "skipped", "reason": "no Wix project linked (or Wix project has no Job No)"}
-    elif not drive_folder_id and gdrive_client._parse_company_from_job_no(wix_job_no) is None:
-        drive_push = {"status": "skipped", "reason": f"could not parse company from Job No '{wix_job_no}'"}
-    else:
-        upload_targets = list(out_dir.glob("*.pdf"))
-        for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
-            upload_targets += out_dir.glob(f"*{suffix}")
+    upload_targets = list(out_dir.glob("*.pdf"))
+    for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
+        upload_targets += out_dir.glob(f"*{suffix}")
 
-        pdf_files = []
-        for p in sorted(upload_targets):
-            mime = _XLSX_MIME if p.suffix == ".xlsx" else "application/pdf"
-            try:
-                pdf_files.append((p.name, p.read_bytes(), mime))
-            except Exception as e:
-                drive_push.setdefault("read_errors", []).append({"name": p.name, "message": str(e)})
-
-        if not pdf_files:
-            drive_push = {"status": "error", "reason": "PDF pipeline ran but no deliverable files found in out/"}
-        else:
-            try:
-                upload_result = gdrive_client.upload_files(wix_job_no, pdf_files,
-                                                           folder_id=drive_folder_id)
-                drive_push = {
-                    "status": "success" if upload_result["ok"] else "partial",
-                    "folder_url": upload_result.get("folder_url"),
-                    "uploaded": upload_result.get("uploaded", []),
-                    "errors": upload_result.get("errors", []),
-                    "job_no": wix_job_no,
-                }
-                if not upload_result["ok"] and not upload_result.get("uploaded"):
-                    drive_push["status"] = "error"
-            except Exception as e:
-                tb = traceback.format_exc()
-                print(f"DRIVE PUSH FAILURE for job {job_id}: {tb}", flush=True)
-                drive_push = {"status": "error", "reason": f"{type(e).__name__}: {e}", "job_no": wix_job_no}
-
+    drive_push = _push_deliverables_to_drive(wix_job_no, drive_folder_id, upload_targets)
     meta["drive_push"] = drive_push
     _save_meta(job_id, meta)
 
@@ -1115,6 +1121,47 @@ def generate_pdfs(job_id: str):
         flash("PDFs generated. Some Drive uploads failed — see details below.")
     else:
         flash("PDFs generated, but the Drive upload failed. Use the browser download links and upload manually.")
+
+    return redirect(url_for("results", job_id=job_id))
+
+
+@app.route("/job/<job_id>/push-to-drive", methods=["POST"])
+@_require_auth
+def push_selected_to_drive(job_id: str):
+    """Push just the checked deliverables to Drive, without a full regenerate."""
+    job_dir = _job_dir(job_id)
+    meta = _load_meta(job_id)
+    out_dir = job_dir / "out"
+
+    # Only accept filenames that are actually part of today's deliverable
+    # list (same glob results() uses) so a hand-edited form can't reach
+    # arbitrary files in out_dir.
+    allowed = list(out_dir.glob("*.pdf"))
+    for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
+        allowed += out_dir.glob(f"*{suffix}")
+    allowed_names = {p.name for p in allowed}
+    chosen = [out_dir / n for n in request.form.getlist("files") if n in allowed_names]
+
+    if not chosen:
+        flash("Select at least one file to upload.")
+        return redirect(url_for("results", job_id=job_id))
+
+    wix_snapshot = meta.get("wix_snapshot") or {}
+    wix_job_no = (wix_snapshot.get("jobNo") or "").strip()
+    drive_folder_id = meta.get("drive_folder_id")
+
+    drive_push = _push_deliverables_to_drive(wix_job_no, drive_folder_id, chosen)
+    meta["drive_push"] = drive_push
+    _save_meta(job_id, meta)
+
+    if drive_push["status"] == "success":
+        flash(f"Uploaded {len(chosen)} file(s) to Drive ({wix_job_no}/6-Submit).")
+    elif drive_push["status"] == "skipped":
+        flash(f"Drive upload skipped — {drive_push.get('reason', 'not linked to a Wix project')}.")
+    elif drive_push["status"] == "partial":
+        flash("Some files uploaded to Drive; others failed — see details below.")
+    else:
+        flash(f"Drive upload failed — {drive_push.get('reason', 'unknown error')}.")
 
     return redirect(url_for("results", job_id=job_id))
 
