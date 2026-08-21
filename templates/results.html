@@ -39,15 +39,15 @@
 {% endif %}
 
 {% if pdfs %}
-  <p class="muted">Generated. Click any file to download, or select files below and upload just those to Drive.</p>
+  <p class="muted">Click any file to download. Uncheck files below to skip uploading them to Drive, then regenerate.</p>
 
-  <form method="post" action="{{ url_for('push_selected_to_drive', job_id=job_id) }}">
+  <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}">
+    <input type="hidden" name="has_selection" value="1">
     <div class="pdf-list-toolbar" style="display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem;">
       <label class="checkbox">
         <input type="checkbox" id="pdf-select-all" checked>
         Select all
       </label>
-      <button type="submit" class="btn-secondary">Upload Selected to Drive</button>
     </div>
 
     <ul class="pdf-list">
@@ -60,6 +60,9 @@
         </li>
       {% endfor %}
     </ul>
+
+    <button type="submit" class="btn-secondary">Regenerate PDFs &amp; Upload Selected to Drive</button>
+    <span class="muted">Overwrites existing files{% if wix_job_no %} and uploads the checked files to Drive{% endif %}.</span>
   </form>
 
   {% if drive_push %}
@@ -101,11 +104,6 @@
       </div>
     {% endif %}
   {% endif %}
-
-  <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}" style="margin-top:1rem;">
-    <button type="submit" class="btn-secondary">Regenerate PDFs</button>
-    <span class="muted">Overwrites existing files{% if wix_job_no %} and re-pushes to Drive{% endif %}.</span>
-  </form>
 
 {% else %}
   <p class="muted">

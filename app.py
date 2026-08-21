@@ -1109,6 +1109,20 @@ def generate_pdfs(job_id: str):
     for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
         upload_targets += out_dir.glob(f"*{suffix}")
 
+    # The results page always shows checkboxes for these same 7 files once
+    # they exist; "has_selection" is only present on that form (absent on the
+    # very first Generate, before there's anything to check), so its absence
+    # here means "push everything," not "nothing was selected."
+    if "has_selection" in request.form:
+        chosen_names = set(request.form.getlist("files"))
+        upload_targets = [p for p in upload_targets if p.name in chosen_names]
+
+    if not upload_targets:
+        meta["drive_push"] = {"status": "skipped", "reason": "no files selected for Drive upload"}
+        _save_meta(job_id, meta)
+        flash("PDFs generated. No files were selected to upload to Drive.")
+        return redirect(url_for("results", job_id=job_id))
+
     drive_push = _push_deliverables_to_drive(wix_job_no, drive_folder_id, upload_targets)
     meta["drive_push"] = drive_push
     _save_meta(job_id, meta)
@@ -1121,47 +1135,6 @@ def generate_pdfs(job_id: str):
         flash("PDFs generated. Some Drive uploads failed — see details below.")
     else:
         flash("PDFs generated, but the Drive upload failed. Use the browser download links and upload manually.")
-
-    return redirect(url_for("results", job_id=job_id))
-
-
-@app.route("/job/<job_id>/push-to-drive", methods=["POST"])
-@_require_auth
-def push_selected_to_drive(job_id: str):
-    """Push just the checked deliverables to Drive, without a full regenerate."""
-    job_dir = _job_dir(job_id)
-    meta = _load_meta(job_id)
-    out_dir = job_dir / "out"
-
-    # Only accept filenames that are actually part of today's deliverable
-    # list (same glob results() uses) so a hand-edited form can't reach
-    # arbitrary files in out_dir.
-    allowed = list(out_dir.glob("*.pdf"))
-    for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
-        allowed += out_dir.glob(f"*{suffix}")
-    allowed_names = {p.name for p in allowed}
-    chosen = [out_dir / n for n in request.form.getlist("files") if n in allowed_names]
-
-    if not chosen:
-        flash("Select at least one file to upload.")
-        return redirect(url_for("results", job_id=job_id))
-
-    wix_snapshot = meta.get("wix_snapshot") or {}
-    wix_job_no = (wix_snapshot.get("jobNo") or "").strip()
-    drive_folder_id = meta.get("drive_folder_id")
-
-    drive_push = _push_deliverables_to_drive(wix_job_no, drive_folder_id, chosen)
-    meta["drive_push"] = drive_push
-    _save_meta(job_id, meta)
-
-    if drive_push["status"] == "success":
-        flash(f"Uploaded {len(chosen)} file(s) to Drive ({wix_job_no}/6-Submit).")
-    elif drive_push["status"] == "skipped":
-        flash(f"Drive upload skipped — {drive_push.get('reason', 'not linked to a Wix project')}.")
-    elif drive_push["status"] == "partial":
-        flash("Some files uploaded to Drive; others failed — see details below.")
-    else:
-        flash(f"Drive upload failed — {drive_push.get('reason', 'unknown error')}.")
 
     return redirect(url_for("results", job_id=job_id))
 
