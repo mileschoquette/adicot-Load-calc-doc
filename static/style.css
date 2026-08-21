@@ -807,6 +807,10 @@ footer {
 .pdf-list a {
   font-weight: 500;
 }
+.pdf-list input[type="checkbox"] {
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
 
 /* Generate / Regenerate buttons */
 .btn-primary,

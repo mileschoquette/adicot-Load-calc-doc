@@ -39,10 +39,22 @@
 {% endif %}
 
 {% if pdfs %}
-  <p class="muted">Generated. Click any file to download.</p>
+  <p class="muted">Generated. Click any file to download, or select files below and use "Download Selected".</p>
+
+  <div class="pdf-list-toolbar" style="display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem;">
+    <label class="checkbox">
+      <input type="checkbox" id="pdf-select-all" checked>
+      Select all
+    </label>
+    <button type="button" id="download-selected-btn" class="btn-secondary">Download Selected</button>
+  </div>
+
   <ul class="pdf-list">
     {% for pdf in pdfs %}
       <li>
+        <input type="checkbox" class="pdf-checkbox"
+               data-href="{{ url_for('download_file', job_id=job_id, filename=pdf.name) }}"
+               checked>
         <a href="{{ url_for('download_file', job_id=job_id, filename=pdf.name) }}">{{ pdf.name }}</a>
         <span class="muted">({{ pdf.size_kb }} KB)</span>
         {% if pdf.name.endswith("-Combined.pdf") %}<span class="badge">Combined</span>{% endif %}
@@ -240,6 +252,65 @@
       e.target.closest('.override-row').remove();
     }
   });
+})();
+
+(function() {
+  const list       = document.querySelector('.pdf-list');
+  const selectAll  = document.getElementById('pdf-select-all');
+  const downloadBtn = document.getElementById('download-selected-btn');
+  if (!list || !downloadBtn) return;
+
+  const checkboxes = () => Array.from(list.querySelectorAll('.pdf-checkbox'));
+
+  function updateButtonState() {
+    downloadBtn.disabled = !checkboxes().some(b => b.checked);
+  }
+  function syncSelectAll() {
+    if (!selectAll) return;
+    const boxes = checkboxes();
+    selectAll.checked = boxes.length > 0 && boxes.every(b => b.checked);
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', () => {
+      checkboxes().forEach(b => { b.checked = selectAll.checked; });
+      updateButtonState();
+    });
+  }
+  list.addEventListener('change', (e) => {
+    if (e.target.classList.contains('pdf-checkbox')) {
+      syncSelectAll();
+      updateButtonState();
+    }
+  });
+
+  function downloadOne(url) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  downloadBtn.addEventListener('click', () => {
+    const urls = checkboxes().filter(b => b.checked).map(b => b.dataset.href);
+    if (urls.length === 0) return;
+    // Firing many downloads in the same tick makes Chrome treat them as
+    // automatic/abusive and silently drop or block all but the first, so
+    // space them out with a recursive setTimeout instead of a tight loop.
+    let i = 0;
+    function next() {
+      if (i >= urls.length) return;
+      downloadOne(urls[i]);
+      i += 1;
+      setTimeout(next, 400);
+    }
+    next();
+  });
+
+  updateButtonState();
+  syncSelectAll();
 })();
 </script>
 
