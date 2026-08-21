@@ -474,6 +474,28 @@ def _save_assigned_registry(reg: dict) -> None:
     tmp.replace(path)
 
 
+# Free-standing (non-job-scoped) tasks a person jots down for tomorrow's
+# digest, keyed by person key → list of {"id", "text", "created_at"}. Tasks
+# persist until deleted — they're a to-do list, not an append-only log.
+def _manual_tasks_registry_path() -> Path:
+    return JOBS_DIR / "manual_tasks.json"
+
+
+def _load_manual_tasks_registry() -> dict:
+    try:
+        return json.loads(_manual_tasks_registry_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_manual_tasks_registry(reg: dict) -> None:
+    path = _manual_tasks_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(reg, indent=2))
+    tmp.replace(path)
+
+
 def _build_cms_entries() -> list[dict]:
     """Projects from the Wix CMS for the landing list, each tagged with whether
     a parsed workspace already exists for it, its job-list stage, and whether
@@ -522,7 +544,8 @@ def index():
         _BUCKET_RANK.get(e["bucket"], 99),
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
-    return render_template("cms_jobs.html", projects=entries)
+    manual_tasks = _load_manual_tasks_registry()
+    return render_template("cms_jobs.html", projects=entries, manual_tasks=manual_tasks)
 
 
 @app.route("/debug/wix-projects")
@@ -621,6 +644,41 @@ def set_job_assigned(wix_id: str):
         reg.pop(wix_id, None)
     _save_assigned_registry(reg)
     return jsonify({"ok": True, "assigned": assigned})
+
+
+@app.route("/manual-tasks/<person>", methods=["POST"])
+@_require_auth
+def add_manual_task(person: str):
+    """Add a free-standing task (not tied to any job) for Miles/Phoebe/Adi,
+    surfaced in that person's next daily digest until deleted."""
+    if person not in VALID_ASSIGNEES:
+        return jsonify({"ok": False, "error": "Invalid person."}), 400
+    text = request.form.get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "Task can't be empty."}), 400
+    reg = _load_manual_tasks_registry()
+    task = {"id": secrets.token_hex(6), "text": text,
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    reg.setdefault(person, []).append(task)
+    _save_manual_tasks_registry(reg)
+    return jsonify({"ok": True, "task": task})
+
+
+@app.route("/manual-tasks/<person>/<task_id>/delete", methods=["POST"])
+@_require_auth
+def delete_manual_task(person: str, task_id: str):
+    """Remove a manual task once it's done or no longer needed."""
+    if person not in VALID_ASSIGNEES:
+        return jsonify({"ok": False, "error": "Invalid person."}), 400
+    reg = _load_manual_tasks_registry()
+    tasks = reg.get(person, [])
+    remaining = [t for t in tasks if t.get("id") != task_id]
+    if remaining:
+        reg[person] = remaining
+    else:
+        reg.pop(person, None)
+    _save_manual_tasks_registry(reg)
+    return jsonify({"ok": True})
 
 
 @app.route("/job/<wix_id>/delete-cms", methods=["POST"])

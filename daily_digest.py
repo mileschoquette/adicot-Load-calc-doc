@@ -3,8 +3,9 @@
 Sends once a day at SEND_HOUR (America/New_York), one personalized email per
 person in PERSON_EMAILS, grouped into the same buckets shown on the Jobs
 landing page (green/yellow/red/unset), excluding invoiced and expired
-projects. Each person's copy also gets a "YOUR TASKS" section for jobs
-assigned to them (job_assigned.json), when they have any. Runs as a background thread inside
+projects. Each person's copy also gets a "YOUR TASKS" section combining jobs
+assigned to them (job_assigned.json) with their own free-standing manual
+tasks (manual_tasks.json), when they have either. Runs as a background thread inside
 the existing single-worker web service rather than a separate Render Cron
 Job, since a separate Cron Job resource can't mount the same persistent disk
 this app keeps job_stages.json / qbo_invoices_*.json on.
@@ -63,7 +64,15 @@ def _mark_sent(today: str) -> None:
     path.write_text(json.dumps({"last_sent": today}))
 
 
-def _render_body(entries: list[dict], person: str | None = None) -> str:
+def _load_manual_tasks() -> dict:
+    try:
+        return json.loads((JOBS_DIR / "manual_tasks.json").read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _render_body(entries: list[dict], person: str | None = None,
+                  manual_tasks: list[dict] | None = None) -> str:
     base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
     lines = []
     for bucket in ("green", "yellow", "red", "unset"):
@@ -80,13 +89,16 @@ def _render_body(entries: list[dict], person: str | None = None) -> str:
     # copy gets this extra section, and only when they actually have a task.
     if person:
         mine = [e for e in entries if person in e.get("assigned_to", [])]
-        if mine:
+        tasks = manual_tasks or []
+        if mine or tasks:
             lines.append("YOUR TASKS:")
             for e in mine:
                 label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
                 lines.append(f"  {label} — {base}/job/{e['_id']}/star")
                 if e.get("notes"):
                     lines.append(f"      note: {e['notes'][-1]['text']}")
+            for t in tasks:
+                lines.append(f"  - {t['text']}")
             lines.append("")
     if not lines:
         lines = ["No open jobs need attention today."]
@@ -109,10 +121,11 @@ def send_daily_digest() -> bool:
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
 
+    manual_tasks_reg = _load_manual_tasks()
     subject = f"Adicot Jobs Daily Digest — {datetime.date.today().isoformat()}"
     ok_all = True
     for key, email in PERSON_EMAILS.items():
-        body = _render_body(included, person=key)
+        body = _render_body(included, person=key, manual_tasks=manual_tasks_reg.get(key, []))
         if not email_client.send_email([email], subject, body):
             log.error("Daily digest email failed to send to %s.", key)
             ok_all = False

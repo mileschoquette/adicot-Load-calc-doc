@@ -10,8 +10,34 @@
 </div>
 <p class="muted">Click a project to open its work order, or run a one-off temp job from a Design Master HTML export.</p>
 
+<nav class="tab-strip" aria-label="Jobs page tabs">
+  <button type="button" class="tab active" data-tab="projects">Projects</button>
+  <button type="button" class="tab" data-tab="manual-tasks">Manual Tasks</button>
+</nav>
+
+<div id="tab-panel-manual-tasks" hidden>
+  <p class="muted">Ad-hoc reminders for tomorrow's digest, not tied to any job. They stay here until deleted.</p>
+  <div class="manual-tasks-layout">
+    {% for key, label in [('miles', 'Miles'), ('phoebe', 'Phoebe'), ('adi', 'Adi')] %}
+      <div class="manual-tasks-col" data-person="{{ key }}">
+        <h3>{{ label }}</h3>
+        <ul class="manual-task-list">
+          {% for t in manual_tasks.get(key, []) %}
+            <li class="manual-task-item" data-id="{{ t.id }}">
+              <span>{{ t.text }}</span>
+              <button type="button" class="link-btn manual-task-delete" data-id="{{ t.id }}">&times;</button>
+            </li>
+          {% endfor %}
+        </ul>
+        <textarea class="manual-task-input" rows="2" placeholder="Add a task for {{ label }}…"></textarea>
+        <button type="button" class="btn-ghost manual-task-add">Add</button>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
 {% if projects %}
-  <div class="jobs-layout">
+  <div class="jobs-layout" id="tab-panel-projects">
     <div class="jobs-table-wrap">
       <input type="text" id="cms-filter" class="cms-filter"
              placeholder="Filter by address, job no, or title…" autocomplete="off">
@@ -115,8 +141,10 @@
     </div>
   </div>
 {% else %}
-  <p class="muted">No CMS projects available (Wix is unreachable or credentials aren't set).
-    Use <strong>Run a Temp Job</strong> to process an HTML export directly.</p>
+  <div id="tab-panel-projects">
+    <p class="muted">No CMS projects available (Wix is unreachable or credentials aren't set).
+      Use <strong>Run a Temp Job</strong> to process an HTML export directly.</p>
+  </div>
 {% endif %}
 
 <script>
@@ -335,6 +363,82 @@
       notesError.hidden = false;
     } finally {
       notesAdd.disabled = false;
+    }
+  });
+
+  // Jobs-page tabs — Projects / Manual Tasks, no navigation.
+  const tabButtons = Array.from(document.querySelectorAll('.tab-strip .tab[data-tab]'));
+  const tabPanels = {
+    projects: document.getElementById('tab-panel-projects'),
+    'manual-tasks': document.getElementById('tab-panel-manual-tasks'),
+  };
+  tabButtons.forEach(btn => btn.addEventListener('click', () => {
+    tabButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    Object.entries(tabPanels).forEach(([name, panel]) => {
+      if (panel) panel.hidden = name !== btn.dataset.tab;
+    });
+  }));
+
+  // Manual tasks — add and delete, no page reload.
+  document.addEventListener('click', async (e) => {
+    const addBtn = e.target.closest('.manual-task-add');
+    if (!addBtn) return;
+    const col = addBtn.closest('.manual-tasks-col');
+    const person = col.dataset.person;
+    const input = col.querySelector('.manual-task-input');
+    const text = input.value.trim();
+    if (!text) return;
+    addBtn.disabled = true;
+    try {
+      const body = new URLSearchParams({ text });
+      const r = await fetch('/manual-tasks/' + encodeURIComponent(person), { method: 'POST', body });
+      const d = await r.json();
+      if (d.ok) {
+        const list = col.querySelector('.manual-task-list');
+        const li = document.createElement('li');
+        li.className = 'manual-task-item';
+        li.dataset.id = d.task.id;
+        const span = document.createElement('span');
+        span.textContent = d.task.text;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'link-btn manual-task-delete';
+        del.dataset.id = d.task.id;
+        del.innerHTML = '&times;';
+        li.appendChild(span);
+        li.appendChild(del);
+        list.appendChild(li);
+        input.value = '';
+      } else {
+        alert(d.error || 'Failed to add task.');
+      }
+    } catch (err) {
+      alert('Network error adding task.');
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const delBtn = e.target.closest('.manual-task-delete');
+    if (!delBtn) return;
+    const col = delBtn.closest('.manual-tasks-col');
+    const person = col.dataset.person;
+    const li = delBtn.closest('.manual-task-item');
+    delBtn.disabled = true;
+    try {
+      const r = await fetch('/manual-tasks/' + encodeURIComponent(person) + '/' + encodeURIComponent(li.dataset.id) + '/delete', { method: 'POST' });
+      const d = await r.json();
+      if (d.ok) {
+        li.remove();
+      } else {
+        alert(d.error || 'Failed to delete task.');
+        delBtn.disabled = false;
+      }
+    } catch (err) {
+      alert('Network error deleting task.');
+      delBtn.disabled = false;
     }
   });
 })();
