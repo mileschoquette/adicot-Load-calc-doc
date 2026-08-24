@@ -499,7 +499,7 @@ def _save_manual_tasks_registry(reg: dict) -> None:
 
 
 # Due-date override per job, keyed by Wix item id → {"due_date": "YYYY-MM-DD"}.
-# Absence of a key means the due date is the computed default (entered date +
+# Absence of a key means the due date is the computed default (signed date +
 # calendar_utils.WORK_DAYS_TO_DUE work days) — the override only exists once
 # someone edits it on the Calendar tab.
 def _due_date_registry_path() -> Path:
@@ -546,14 +546,14 @@ def _save_calendar_events_registry(events: list) -> None:
     tmp.replace(path)
 
 
-def _parse_wix_date(created_date_str) -> Optional[datetime.date]:
-    """A Wix _createdDate ISO string as a plain date, or None if missing/
+def _parse_wix_date(date_str) -> Optional[datetime.date]:
+    """A Wix date field's ISO string as a plain date, or None if missing/
     unparseable (mirrors the tolerant parsing in _is_stale())."""
-    if not created_date_str or not isinstance(created_date_str, str):
+    if not date_str or not isinstance(date_str, str):
         return None
     try:
         return datetime.datetime.fromisoformat(
-            created_date_str.replace("Z", "+00:00")).date()
+            date_str.replace("Z", "+00:00")).date()
     except (ValueError, TypeError, AttributeError):
         return None
 
@@ -562,7 +562,7 @@ def _build_cms_entries() -> list[dict]:
     """Projects from the Wix CMS for the landing list, each tagged with whether
     a parsed workspace already exists for it, its job-list stage, whether
     it's already been invoiced (all keyed by the Wix item id), and its
-    Calendar tab entered/due dates."""
+    Calendar tab signed/due dates."""
     stage_reg = _load_stage_registry()
     inv_reg = _load_invoice_registry()
     notes_reg = _load_notes_registry()
@@ -581,10 +581,13 @@ def _build_cms_entries() -> list[dict]:
                   and (JOBS_DIR / _id / "report.json").exists())
         raw_stage = stage_reg.get(_id, {}).get("stage")
         stage = raw_stage if raw_stage in VALID_STAGES else None
-        entered_date = _parse_wix_date(p.get("createdDate"))
+        # Calendar tab date of record is when the client signed the proposal,
+        # not when the Wix record was created — a project can sit unsigned for
+        # a while before it's actually queued up for engineering.
+        signed_date = _parse_wix_date(p.get("signedDate"))
         due_override = due_date_reg.get(_id, {}).get("due_date")
-        due_date = (calendar_utils.due_date_for(entered_date, due_override)
-                    if entered_date else None)
+        due_date = (calendar_utils.due_date_for(signed_date, due_override)
+                    if signed_date else None)
         entries.append({
             "_id": _id, "job_no": job_no, "address": addr,
             "title": title, "parsed": parsed,
@@ -593,7 +596,7 @@ def _build_cms_entries() -> list[dict]:
             "invoiced": _id in inv_reg,
             "notes": notes_reg.get(_id, []),
             "assigned_to": assigned_reg.get(_id, []),
-            "entered_date": entered_date.isoformat() if entered_date else None,
+            "signed_date": signed_date.isoformat() if signed_date else None,
             "due_date": due_date.isoformat() if due_date else None,
             "due_date_overridden": bool(due_override),
         })
@@ -755,9 +758,10 @@ def delete_manual_task(person: str, task_id: str):
 @app.route("/calendar")
 @_require_auth
 def calendar_page():
-    """Site-wide Calendar tab — every CMS job's entered/due date plus
+    """Site-wide Calendar tab — every CMS job's signed/due date plus
     manually-added events, for a single month at a time (?month=YYYY-MM,
-    default this month)."""
+    default this month). Shows every project regardless of stage/invoiced/
+    expired status, so past jobs stay visible on the calendar."""
     today = datetime.date.today()
     month_param = request.args.get("month", "").strip()
     try:
@@ -766,13 +770,13 @@ def calendar_page():
     except (ValueError, TypeError):
         month_start = today.replace(day=1)
 
-    entries = [e for e in _build_cms_entries() if not e["invoiced"] and not e["expired"]]
+    entries = _build_cms_entries()
     events = _load_calendar_events_registry()
 
-    entered_by_date, due_by_date = {}, {}
+    signed_by_date, due_by_date = {}, {}
     for e in entries:
-        if e["entered_date"]:
-            entered_by_date.setdefault(e["entered_date"], []).append(e)
+        if e["signed_date"]:
+            signed_by_date.setdefault(e["signed_date"], []).append(e)
         if e["due_date"]:
             due_by_date.setdefault(e["due_date"], []).append(e)
     events_by_date = {}
@@ -794,7 +798,7 @@ def calendar_page():
         next_month=next_month.strftime("%Y-%m"),
         today=today.isoformat(),
         weeks=weeks,
-        entered_by_date=entered_by_date,
+        signed_by_date=signed_by_date,
         due_by_date=due_by_date,
         events_by_date=events_by_date,
         valid_event_assignees=sorted(VALID_EVENT_ASSIGNEES),
@@ -805,7 +809,7 @@ def calendar_page():
 @_require_auth
 def set_job_due_date(wix_id: str):
     """Override a job's computed due date, or clear the override (empty
-    due_date) to fall back to entered date + 15 work days."""
+    due_date) to fall back to signed date + 15 work days."""
     if not wix_id:
         return jsonify({"ok": False, "error": "Missing project id."}), 400
     due_date = request.form.get("due_date", "").strip()

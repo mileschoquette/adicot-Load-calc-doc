@@ -4,7 +4,7 @@ Sends once a day at SEND_HOUR (America/New_York), one personalized email per
 person in PERSON_EMAILS, grouped into the same buckets shown on the Jobs
 landing page (green/yellow/red/unset), excluding invoiced and expired
 projects, plus a shared deadlines section for jobs due in exactly 2 weeks, 1
-week, or today (job_due_dates.json overrides, else entered date + 15 work
+week, or today (job_due_dates.json overrides, else signed date + 15 work
 days — see calendar_utils.py) and any calendar_events.json entry due today.
 Each person's copy also gets a "YOUR TASKS" section combining jobs
 assigned to them (job_assigned.json), their own free-standing manual

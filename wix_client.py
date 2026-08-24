@@ -99,7 +99,8 @@ def list_projects() -> list[dict]:
     """Return a list of lightweight project records for the upload-page autocomplete.
 
     Each entry has the keys the dropdown needs (and nothing else, to keep the
-    HTML response small): _id, projectAddress, jobNo, title.
+    HTML response small): _id, projectAddress, jobNo, title, createdDate,
+    signedDate.
 
     Returns [] on any failure — including missing credentials. The autocomplete
     just shows no suggestions in that case and the engineer can type freely.
@@ -126,8 +127,8 @@ def list_projects() -> list[dict]:
                 "dataCollectionId": _PROJECTS_COLLECTION_ID,
                 "query": {
                     "paging": {"limit": 100},
-                    # Only fetch the fields the autocomplete needs.
-                    "fields": ["_id", "projectAddress", "jobNo", "title", "_createdDate"],
+                    # Only fetch the fields the autocomplete and calendar need.
+                    "fields": ["_id", "projectAddress", "jobNo", "title", "_createdDate", "signedDate"],
                 },
             }
             if cursor:
@@ -157,6 +158,7 @@ def list_projects() -> list[dict]:
                     "jobNo":          data.get("jobNo") or "",
                     "title":          data.get("title") or "",
                     "createdDate":    _plain_date(data.get("_createdDate") or item.get("_createdDate")),
+                    "signedDate":     _plain_date(data.get("signedDate")),
                 })
 
             cursors = payload.get("pagingMetadata", {}).get("cursors") or {}

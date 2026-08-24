@@ -10,7 +10,7 @@
     <button type="button" class="btn-primary" id="cal-add-btn">+ Add Event</button>
   </div>
 </div>
-<p class="muted">Jobs show the date they entered the queue and their due date (15 work days later, editable). Manual events show up on the day they're due.</p>
+<p class="muted">Jobs show the date the client signed the proposal and their due date (15 work days later, editable). Manual events show up on the day they're due.</p>
 
 <div class="cal-grid">
   <div class="cal-grid-head">
@@ -24,8 +24,8 @@
         {% set iso = day.isoformat() %}
         <div class="cal-day {{ 'cal-day-outside' if day.month != month_start.month }} {{ 'cal-day-today' if iso == today }}">
           <div class="cal-day-num">{{ day.day }}</div>
-          {% for e in entered_by_date.get(iso, []) %}
-            <div class="cal-marker cal-marker-entered" title="Entered queue">
+          {% for e in signed_by_date.get(iso, []) %}
+            <div class="cal-marker cal-marker-entered" title="Proposal signed">
               &#9679; {{ e.job_no or e.address or e.title or '(untitled)' }}
             </div>
           {% endfor %}
@@ -51,7 +51,7 @@
   <div class="modal">
     <h3>Edit due date</h3>
     <div class="field">
-      <label for="due-input">Due date (leave blank to reset to entered date + 15 work days)</label>
+      <label for="due-input">Due date (leave blank to reset to signed date + 15 work days)</label>
       <input type="date" id="due-input">
     </div>
     <div class="modal-error" id="due-error" hidden></div>
