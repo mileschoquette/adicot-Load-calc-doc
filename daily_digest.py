@@ -3,9 +3,13 @@
 Sends once a day at SEND_HOUR (America/New_York), one personalized email per
 person in PERSON_EMAILS, grouped into the same buckets shown on the Jobs
 landing page (green/yellow/red/unset), excluding invoiced and expired
-projects. Each person's copy also gets a "YOUR TASKS" section combining jobs
-assigned to them (job_assigned.json) with their own free-standing manual
-tasks (manual_tasks.json), when they have either. Runs as a background thread inside
+projects, plus a shared deadlines section for jobs due in exactly 2 weeks, 1
+week, or today (job_due_dates.json overrides, else entered date + 15 work
+days — see calendar_utils.py) and any calendar_events.json entry due today.
+Each person's copy also gets a "YOUR TASKS" section combining jobs
+assigned to them (job_assigned.json), their own free-standing manual
+tasks (manual_tasks.json), and any calendar event due today assigned
+specifically to them. Runs as a background thread inside
 the existing single-worker web service rather than a separate Render Cron
 Job, since a separate Cron Job resource can't mount the same persistent disk
 this app keeps job_stages.json / qbo_invoices_*.json on.
@@ -28,6 +32,7 @@ import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import calendar_utils
 import email_client
 
 log = logging.getLogger(__name__)
@@ -45,6 +50,11 @@ _BUCKET_LABELS = {
     "red": "Waiting on client",
     "unset": "Unset",
 }
+
+# Job due-date offsets (days until due) that earn a mention in the digest —
+# a heads-up at 2 weeks out, another at 1 week out, and a final one the day
+# it's actually due.
+_DEADLINE_LABELS = {14: "DUE IN 2 WEEKS", 7: "DUE IN 1 WEEK", 0: "DUE TODAY"}
 
 
 def _state_path() -> Path:
@@ -71,10 +81,51 @@ def _load_manual_tasks() -> dict:
         return {}
 
 
-def _render_body(entries: list[dict], person: str | None = None,
-                  manual_tasks: list[dict] | None = None) -> str:
+def _load_calendar_events() -> list[dict]:
+    try:
+        return json.loads((JOBS_DIR / "calendar_events.json").read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _deadlines_by_offset(entries: list[dict], today: datetime.date) -> dict[int, list[dict]]:
+    """Jobs whose due date is exactly 14, 7, or 0 days out today — the three
+    offsets that earn a digest mention (see _DEADLINE_LABELS)."""
+    by_offset: dict[int, list[dict]] = {offset: [] for offset in _DEADLINE_LABELS}
+    for e in entries:
+        if not e.get("due_date"):
+            continue
+        due = datetime.date.fromisoformat(e["due_date"])
+        days = calendar_utils.days_until(due, today)
+        if days in by_offset:
+            by_offset[days].append(e)
+    return by_offset
+
+
+def _render_body(entries: list[dict], deadlines_by_offset: dict[int, list[dict]],
+                  shared_events_today: list[dict], person: str | None = None,
+                  manual_tasks: list[dict] | None = None,
+                  person_events_today: list[dict] | None = None) -> str:
     base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
     lines = []
+    # Deadlines and shared calendar events are identical for every recipient,
+    # same as the bucket list below — only the "YOUR TASKS" section differs.
+    for offset, label in _DEADLINE_LABELS.items():
+        group = deadlines_by_offset.get(offset, [])
+        if not group:
+            continue
+        lines.append(label)
+        for e in group:
+            job_label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
+            lines.append(f"  {job_label} — {base}/job/{e['_id']}/star")
+        lines.append("")
+    if shared_events_today:
+        lines.append("TODAY'S CALENDAR EVENTS")
+        for ev in shared_events_today:
+            lines.append(f"  {ev['title']}")
+            if ev.get("notes"):
+                lines.append(f"      note: {ev['notes']}")
+        lines.append("")
     for bucket in ("green", "yellow", "red", "unset"):
         group = [e for e in entries if e["bucket"] == bucket]
         if not group:
@@ -90,7 +141,8 @@ def _render_body(entries: list[dict], person: str | None = None,
     if person:
         mine = [e for e in entries if person in e.get("assigned_to", [])]
         tasks = manual_tasks or []
-        if mine or tasks:
+        events = person_events_today or []
+        if mine or tasks or events:
             lines.append("YOUR TASKS:")
             for e in mine:
                 label = e["job_no"] or e["address"] or e["title"] or "(untitled)"
@@ -99,6 +151,10 @@ def _render_body(entries: list[dict], person: str | None = None,
                     lines.append(f"      note: {e['notes'][-1]['text']}")
             for t in tasks:
                 lines.append(f"  - {t['text']}")
+            for ev in events:
+                lines.append(f"  - {ev['title']} (due today)")
+                if ev.get("notes"):
+                    lines.append(f"      note: {ev['notes']}")
             lines.append("")
     if not lines:
         lines = ["No open jobs need attention today."]
@@ -121,11 +177,20 @@ def send_daily_digest() -> bool:
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
 
+    today = datetime.date.today()
+    deadlines_by_offset = _deadlines_by_offset(included, today)
+
+    events_today = [ev for ev in _load_calendar_events() if ev.get("date") == today.isoformat()]
+    shared_events_today = [ev for ev in events_today if ev.get("assigned_to") == "everyone"]
+
     manual_tasks_reg = _load_manual_tasks()
-    subject = f"Adicot Jobs Daily Digest — {datetime.date.today().isoformat()}"
+    subject = f"Adicot Jobs Daily Digest — {today.isoformat()}"
     ok_all = True
     for key, email in PERSON_EMAILS.items():
-        body = _render_body(included, person=key, manual_tasks=manual_tasks_reg.get(key, []))
+        person_events_today = [ev for ev in events_today if ev.get("assigned_to") == key]
+        body = _render_body(included, deadlines_by_offset, shared_events_today, person=key,
+                             manual_tasks=manual_tasks_reg.get(key, []),
+                             person_events_today=person_events_today)
         if not email_client.send_email([email], subject, body):
             log.error("Daily digest email failed to send to %s.", key)
             ok_all = False

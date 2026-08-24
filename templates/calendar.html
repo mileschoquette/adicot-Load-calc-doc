@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Calendar — Adicot HVAC Pipeline{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h2>{{ month_start.strftime('%B %Y') }}</h2>
+  <div>
+    <a class="btn-ghost" href="{{ url_for('calendar_page', month=prev_month) }}">&larr; Prev</a>
+    <a class="btn-ghost" href="{{ url_for('calendar_page', month=next_month) }}">Next &rarr;</a>
+    <button type="button" class="btn-primary" id="cal-add-btn">+ Add Event</button>
+  </div>
+</div>
+<p class="muted">Jobs show the date they entered the queue and their due date (15 work days later, editable). Manual events show up on the day they're due.</p>
+
+<div class="cal-grid">
+  <div class="cal-grid-head">
+    {% for label in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] %}
+      <div>{{ label }}</div>
+    {% endfor %}
+  </div>
+  {% for week in weeks %}
+    <div class="cal-week">
+      {% for day in week %}
+        {% set iso = day.isoformat() %}
+        <div class="cal-day {{ 'cal-day-outside' if day.month != month_start.month }} {{ 'cal-day-today' if iso == today }}">
+          <div class="cal-day-num">{{ day.day }}</div>
+          {% for e in entered_by_date.get(iso, []) %}
+            <div class="cal-marker cal-marker-entered" title="Entered queue">
+              &#9679; {{ e.job_no or e.address or e.title or '(untitled)' }}
+            </div>
+          {% endfor %}
+          {% for e in due_by_date.get(iso, []) %}
+            <div class="cal-marker cal-marker-due" title="Due{{ ' (overridden)' if e.due_date_overridden else '' }}">
+              &#9670; {{ e.job_no or e.address or e.title or '(untitled)' }}
+              <button type="button" class="link-btn cal-due-edit" data-id="{{ e._id }}" data-due="{{ e.due_date }}" title="Edit due date">&#9998;</button>
+            </div>
+          {% endfor %}
+          {% for ev in events_by_date.get(iso, []) %}
+            <button type="button" class="cal-marker cal-marker-event cal-event-btn" data-event='{{ ev | tojson | forceescape }}'>
+              &#8226; {{ ev.title }}
+            </button>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>
+
+{# ── Due-date edit modal ─────────────────────────────────────────── #}
+<div class="modal-overlay" id="due-modal">
+  <div class="modal">
+    <h3>Edit due date</h3>
+    <div class="field">
+      <label for="due-input">Due date (leave blank to reset to entered date + 15 work days)</label>
+      <input type="date" id="due-input">
+    </div>
+    <div class="modal-error" id="due-error" hidden></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="due-cancel">Cancel</button>
+      <button type="button" class="btn-primary" id="due-save">Save</button>
+    </div>
+  </div>
+</div>
+
+{# ── Add / view / edit event modal ───────────────────────────────── #}
+<div class="modal-overlay" id="event-modal">
+  <div class="modal">
+    <h3 id="event-modal-title">Add event</h3>
+    <div class="field">
+      <label for="event-title">Title</label>
+      <input type="text" id="event-title">
+    </div>
+    <div class="field">
+      <label for="event-date">Date</label>
+      <input type="date" id="event-date">
+    </div>
+    <div class="field">
+      <label for="event-assigned">Assigned to</label>
+      <select id="event-assigned">
+        {% for key in valid_event_assignees %}
+          <option value="{{ key }}">{{ key|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="event-notes">Notes</label>
+      <textarea id="event-notes" rows="3"></textarea>
+    </div>
+    <div class="modal-error" id="event-error" hidden></div>
+    <div class="modal-actions">
+      <button type="button" class="danger-link" id="event-delete" hidden>Delete</button>
+      <button type="button" class="btn-ghost" id="event-cancel">Cancel</button>
+      <button type="button" class="btn-primary" id="event-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Due-date edit — one shared modal, target job id kept on the button that opened it.
+  const dueModal = document.getElementById('due-modal');
+  const dueInput = document.getElementById('due-input');
+  const dueError = document.getElementById('due-error');
+  let dueTarget = null;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.cal-due-edit');
+    if (!btn || !dueModal) return;
+    dueTarget = btn.dataset.id;
+    dueInput.value = btn.dataset.due || '';
+    dueError.hidden = true;
+    dueModal.classList.add('open');
+  });
+  document.getElementById('due-cancel').addEventListener('click', () => dueModal.classList.remove('open'));
+  dueModal.addEventListener('click', (e) => { if (e.target === dueModal) dueModal.classList.remove('open'); });
+  document.getElementById('due-save').addEventListener('click', async () => {
+    if (!dueTarget) return;
+    try {
+      const body = new URLSearchParams({ due_date: dueInput.value });
+      const r = await fetch('/calendar/jobs/' + encodeURIComponent(dueTarget) + '/due-date', { method: 'POST', body });
+      const d = await r.json();
+      if (d.ok) {
+        location.reload();
+      } else {
+        dueError.textContent = d.error || 'Failed to save due date.';
+        dueError.hidden = false;
+      }
+    } catch (err) {
+      dueError.textContent = 'Network error saving due date.';
+      dueError.hidden = false;
+    }
+  });
+
+  // Add / view / edit event — one shared modal.
+  const evModal   = document.getElementById('event-modal');
+  const evTitleEl = document.getElementById('event-modal-title');
+  const evTitle   = document.getElementById('event-title');
+  const evDate    = document.getElementById('event-date');
+  const evAssigned = document.getElementById('event-assigned');
+  const evNotes   = document.getElementById('event-notes');
+  const evError   = document.getElementById('event-error');
+  const evDelete  = document.getElementById('event-delete');
+  let evTargetId = null;   // null = creating a new event
+
+  function openEventModal(ev) {
+    evTargetId = ev ? ev.id : null;
+    evTitleEl.textContent = ev ? 'Edit event' : 'Add event';
+    evTitle.value = ev ? ev.title : '';
+    evDate.value = ev ? ev.date : '';
+    evAssigned.value = ev ? ev.assigned_to : 'everyone';
+    evNotes.value = ev ? ev.notes : '';
+    evError.hidden = true;
+    evDelete.hidden = !ev;
+    evModal.classList.add('open');
+  }
+
+  document.getElementById('cal-add-btn').addEventListener('click', () => openEventModal(null));
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.cal-event-btn');
+    if (!btn) return;
+    openEventModal(JSON.parse(btn.dataset.event));
+  });
+  document.getElementById('event-cancel').addEventListener('click', () => evModal.classList.remove('open'));
+  evModal.addEventListener('click', (e) => { if (e.target === evModal) evModal.classList.remove('open'); });
+
+  document.getElementById('event-save').addEventListener('click', async () => {
+    if (!evTitle.value.trim() || !evDate.value) {
+      evError.textContent = 'Title and date are required.';
+      evError.hidden = false;
+      return;
+    }
+    const url = evTargetId ? '/calendar/events/' + encodeURIComponent(evTargetId) : '/calendar/events';
+    try {
+      const body = new URLSearchParams({
+        title: evTitle.value.trim(), date: evDate.value,
+        assigned_to: evAssigned.value, notes: evNotes.value.trim(),
+      });
+      const r = await fetch(url, { method: 'POST', body });
+      const d = await r.json();
+      if (d.ok) {
+        location.reload();
+      } else {
+        evError.textContent = d.error || 'Failed to save event.';
+        evError.hidden = false;
+      }
+    } catch (err) {
+      evError.textContent = 'Network error saving event.';
+      evError.hidden = false;
+    }
+  });
+
+  evDelete.addEventListener('click', async () => {
+    if (!evTargetId) return;
+    try {
+      const r = await fetch('/calendar/events/' + encodeURIComponent(evTargetId) + '/delete', { method: 'POST' });
+      const d = await r.json();
+      if (d.ok) {
+        location.reload();
+      } else {
+        evError.textContent = d.error || 'Failed to delete event.';
+        evError.hidden = false;
+      }
+    } catch (err) {
+      evError.textContent = 'Network error deleting event.';
+      evError.hidden = false;
+    }
+  });
+})();
+</script>
+
+{% endblock %}

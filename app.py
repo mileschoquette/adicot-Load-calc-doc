@@ -49,6 +49,7 @@ Environment variables:
 
 from __future__ import annotations
 
+import calendar as pycalendar
 import datetime
 import functools
 import io
@@ -71,6 +72,7 @@ from werkzeug.utils import secure_filename
 
 import hvac_pipeline as hp
 from charts import render_all_charts
+import calendar_utils
 import wix_client
 import validators
 import gdrive_client
@@ -496,14 +498,76 @@ def _save_manual_tasks_registry(reg: dict) -> None:
     tmp.replace(path)
 
 
+# Due-date override per job, keyed by Wix item id → {"due_date": "YYYY-MM-DD"}.
+# Absence of a key means the due date is the computed default (entered date +
+# calendar_utils.WORK_DAYS_TO_DUE work days) — the override only exists once
+# someone edits it on the Calendar tab.
+def _due_date_registry_path() -> Path:
+    return JOBS_DIR / "job_due_dates.json"
+
+
+def _load_due_date_registry() -> dict:
+    try:
+        return json.loads(_due_date_registry_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_due_date_registry(reg: dict) -> None:
+    path = _due_date_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(reg, indent=2))
+    tmp.replace(path)
+
+
+# Manually-added Calendar tab events, not tied to any job — a flat list of
+# {"id", "title", "date", "notes", "assigned_to", "created_at"}.
+# assigned_to is "everyone" or one of VALID_ASSIGNEES.
+VALID_EVENT_ASSIGNEES = VALID_ASSIGNEES | {"everyone"}
+
+
+def _calendar_events_registry_path() -> Path:
+    return JOBS_DIR / "calendar_events.json"
+
+
+def _load_calendar_events_registry() -> list:
+    try:
+        return json.loads(_calendar_events_registry_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_calendar_events_registry(events: list) -> None:
+    path = _calendar_events_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(events, indent=2))
+    tmp.replace(path)
+
+
+def _parse_wix_date(created_date_str) -> Optional[datetime.date]:
+    """A Wix _createdDate ISO string as a plain date, or None if missing/
+    unparseable (mirrors the tolerant parsing in _is_stale())."""
+    if not created_date_str or not isinstance(created_date_str, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(
+            created_date_str.replace("Z", "+00:00")).date()
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 def _build_cms_entries() -> list[dict]:
     """Projects from the Wix CMS for the landing list, each tagged with whether
-    a parsed workspace already exists for it, its job-list stage, and whether
-    it's already been invoiced (all keyed by the Wix item id)."""
+    a parsed workspace already exists for it, its job-list stage, whether
+    it's already been invoiced (all keyed by the Wix item id), and its
+    Calendar tab entered/due dates."""
     stage_reg = _load_stage_registry()
     inv_reg = _load_invoice_registry()
     notes_reg = _load_notes_registry()
     assigned_reg = _load_assigned_registry()
+    due_date_reg = _load_due_date_registry()
     entries = []
     for p in wix_client.list_projects():
         _id = (p.get("_id") or "").strip()
@@ -517,6 +581,10 @@ def _build_cms_entries() -> list[dict]:
                   and (JOBS_DIR / _id / "report.json").exists())
         raw_stage = stage_reg.get(_id, {}).get("stage")
         stage = raw_stage if raw_stage in VALID_STAGES else None
+        entered_date = _parse_wix_date(p.get("createdDate"))
+        due_override = due_date_reg.get(_id, {}).get("due_date")
+        due_date = (calendar_utils.due_date_for(entered_date, due_override)
+                    if entered_date else None)
         entries.append({
             "_id": _id, "job_no": job_no, "address": addr,
             "title": title, "parsed": parsed,
@@ -525,6 +593,9 @@ def _build_cms_entries() -> list[dict]:
             "invoiced": _id in inv_reg,
             "notes": notes_reg.get(_id, []),
             "assigned_to": assigned_reg.get(_id, []),
+            "entered_date": entered_date.isoformat() if entered_date else None,
+            "due_date": due_date.isoformat() if due_date else None,
+            "due_date_overridden": bool(due_override),
         })
     entries.sort(key=lambda e: (e["address"] or e["title"] or e["job_no"]).lower())
     return entries
@@ -678,6 +749,139 @@ def delete_manual_task(person: str, task_id: str):
     else:
         reg.pop(person, None)
     _save_manual_tasks_registry(reg)
+    return jsonify({"ok": True})
+
+
+@app.route("/calendar")
+@_require_auth
+def calendar_page():
+    """Site-wide Calendar tab — every CMS job's entered/due date plus
+    manually-added events, for a single month at a time (?month=YYYY-MM,
+    default this month)."""
+    today = datetime.date.today()
+    month_param = request.args.get("month", "").strip()
+    try:
+        year, month = (int(x) for x in month_param.split("-", 1))
+        month_start = datetime.date(year, month, 1)
+    except (ValueError, TypeError):
+        month_start = today.replace(day=1)
+
+    entries = [e for e in _build_cms_entries() if not e["invoiced"] and not e["expired"]]
+    events = _load_calendar_events_registry()
+
+    entered_by_date, due_by_date = {}, {}
+    for e in entries:
+        if e["entered_date"]:
+            entered_by_date.setdefault(e["entered_date"], []).append(e)
+        if e["due_date"]:
+            due_by_date.setdefault(e["due_date"], []).append(e)
+    events_by_date = {}
+    for ev in events:
+        events_by_date.setdefault(ev["date"], []).append(ev)
+
+    # Sunday-first weeks spanning the month, including leading/trailing days
+    # from adjacent months so the grid is always a whole number of weeks.
+    weeks = pycalendar.Calendar(firstweekday=6).monthdatescalendar(
+        month_start.year, month_start.month)
+
+    next_month = (month_start.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+    prev_month = (month_start - datetime.timedelta(days=1)).replace(day=1)
+
+    return render_template(
+        "calendar.html",
+        month_start=month_start,
+        prev_month=prev_month.strftime("%Y-%m"),
+        next_month=next_month.strftime("%Y-%m"),
+        today=today.isoformat(),
+        weeks=weeks,
+        entered_by_date=entered_by_date,
+        due_by_date=due_by_date,
+        events_by_date=events_by_date,
+        valid_event_assignees=sorted(VALID_EVENT_ASSIGNEES),
+    )
+
+
+@app.route("/calendar/jobs/<wix_id>/due-date", methods=["POST"])
+@_require_auth
+def set_job_due_date(wix_id: str):
+    """Override a job's computed due date, or clear the override (empty
+    due_date) to fall back to entered date + 15 work days."""
+    if not wix_id:
+        return jsonify({"ok": False, "error": "Missing project id."}), 400
+    due_date = request.form.get("due_date", "").strip()
+    if due_date:
+        try:
+            datetime.date.fromisoformat(due_date)
+        except ValueError:
+            return jsonify({"ok": False, "error": "Invalid date."}), 400
+    reg = _load_due_date_registry()
+    if due_date:
+        reg[wix_id] = {"due_date": due_date}
+    else:
+        reg.pop(wix_id, None)
+    _save_due_date_registry(reg)
+    return jsonify({"ok": True, "due_date": due_date or None})
+
+
+@app.route("/calendar/events", methods=["POST"])
+@_require_auth
+def add_calendar_event():
+    """Add a manual Calendar tab event (not tied to any job)."""
+    title = request.form.get("title", "").strip()
+    date_str = request.form.get("date", "").strip()
+    notes = request.form.get("notes", "").strip()
+    assigned_to = request.form.get("assigned_to", "everyone").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "Title can't be empty."}), 400
+    try:
+        datetime.date.fromisoformat(date_str)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid date."}), 400
+    if assigned_to not in VALID_EVENT_ASSIGNEES:
+        return jsonify({"ok": False, "error": "Invalid assignee."}), 400
+    events = _load_calendar_events_registry()
+    event = {"id": secrets.token_hex(6), "title": title, "date": date_str,
+              "notes": notes, "assigned_to": assigned_to,
+              "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    events.append(event)
+    _save_calendar_events_registry(events)
+    return jsonify({"ok": True, "event": event})
+
+
+@app.route("/calendar/events/<event_id>", methods=["POST"])
+@_require_auth
+def update_calendar_event(event_id: str):
+    """Edit an existing manual Calendar tab event."""
+    title = request.form.get("title", "").strip()
+    date_str = request.form.get("date", "").strip()
+    notes = request.form.get("notes", "").strip()
+    assigned_to = request.form.get("assigned_to", "everyone").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "Title can't be empty."}), 400
+    try:
+        datetime.date.fromisoformat(date_str)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid date."}), 400
+    if assigned_to not in VALID_EVENT_ASSIGNEES:
+        return jsonify({"ok": False, "error": "Invalid assignee."}), 400
+    events = _load_calendar_events_registry()
+    for ev in events:
+        if ev.get("id") == event_id:
+            ev.update(title=title, date=date_str, notes=notes, assigned_to=assigned_to)
+            _save_calendar_events_registry(events)
+            return jsonify({"ok": True, "event": ev})
+    return jsonify({"ok": False, "error": "Event not found."}), 404
+
+
+@app.route("/calendar/events/<event_id>/delete", methods=["POST"])
+@_require_auth
+def delete_calendar_event(event_id: str):
+    """Remove a manual Calendar tab event."""
+    events = _load_calendar_events_registry()
+    remaining = [e for e in events if e.get("id") != event_id]
+    if len(remaining) == len(events):
+        return jsonify({"ok": False, "error": "Event not found."}), 404
+    _save_calendar_events_registry(remaining)
     return jsonify({"ok": True})
 
 
