@@ -932,18 +932,10 @@ footer {
   cursor: default;
 }
 .cal-marker-entered { color: var(--muted); }
-.cal-marker-due { color: var(--warn); }
-.cal-marker-event, .cal-event-btn {
-  color: var(--accent);
+.cal-marker-due, .cal-due-edit { color: var(--warn); }
+.cal-marker-event, .cal-event-btn, .cal-due-edit {
   cursor: pointer;
 }
-.cal-event-btn:hover { text-decoration: underline; }
-.cal-due-edit {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 0 0.15rem;
-  font-size: 0.75rem;
-}
+.cal-marker-event, .cal-event-btn { color: var(--accent); }
+.cal-event-btn:hover, .cal-due-edit:hover { text-decoration: underline; }
 

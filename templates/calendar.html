@@ -30,10 +30,12 @@
             </div>
           {% endfor %}
           {% for e in due_by_date.get(iso, []) %}
-            <div class="cal-marker cal-marker-due" title="Due{{ ' (overridden)' if e.due_date_overridden else '' }}">
+            <button type="button" class="cal-marker cal-marker-due cal-due-edit"
+                    data-id="{{ e._id }}" data-due="{{ e.due_date }}"
+                    data-label="{{ e.job_no or e.address or e.title or '(untitled)' }}"
+                    title="Due{{ ' (overridden)' if e.due_date_overridden else '' }} — click to edit">
               &#9670; {{ e.job_no or e.address or e.title or '(untitled)' }}
-              <button type="button" class="link-btn cal-due-edit" data-id="{{ e._id }}" data-due="{{ e.due_date }}" title="Edit due date">&#9998;</button>
-            </div>
+            </button>
           {% endfor %}
           {% for ev in events_by_date.get(iso, []) %}
             <button type="button" class="cal-marker cal-marker-event cal-event-btn" data-event='{{ ev | tojson | forceescape }}'>
@@ -50,6 +52,7 @@
 <div class="modal-overlay" id="due-modal">
   <div class="modal">
     <h3>Edit due date</h3>
+    <p class="muted small" id="due-label"></p>
     <div class="field">
       <label for="due-input">Due date (leave blank to reset to signed date + 15 work days)</label>
       <input type="date" id="due-input">
@@ -100,6 +103,7 @@
   // Due-date edit — one shared modal, target job id kept on the button that opened it.
   const dueModal = document.getElementById('due-modal');
   const dueInput = document.getElementById('due-input');
+  const dueLabel = document.getElementById('due-label');
   const dueError = document.getElementById('due-error');
   let dueTarget = null;
 
@@ -108,6 +112,7 @@
     if (!btn || !dueModal) return;
     dueTarget = btn.dataset.id;
     dueInput.value = btn.dataset.due || '';
+    dueLabel.textContent = btn.dataset.label || '';
     dueError.hidden = true;
     dueModal.classList.add('open');
   });
