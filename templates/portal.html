@@ -1,0 +1,489 @@
+<!--
+Client-facing work order / intake / proposal / e-signature page.
+Reached via the signed magic-link route (see app.py's `portal` view), NOT
+behind @_require_auth — the token itself is the auth.
+
+Context this template assumes (all passed by the `portal` view):
+  job         dict  — the full Sheet row for this project (Jinja `job.x` falls
+                       back to dict-item access, so missing keys render blank
+                       rather than erroring; use `job.get('x')`-style guards
+                       for anything rendered inside a Python expression).
+                       Expected keys mirror admin-review.html's field set:
+                       jobNo, title, projectAddress, propertyOwner, owner,
+                       clientName, clientCompany, clientEmail, clientPhone,
+                       productService, status, totalCost (pre-formatted
+                       display string, e.g. "3,200"), feeDueAward,
+                       engagementDays, deliverablesOverride (newline-separated,
+                       optional), plus every Building Basics / Roof & Ceiling /
+                       Walls-Floor-Glass / Internal Loads / HVAC System field
+                       named the same as admin-review.html's collectAdminFields
+                       output (buildingStatus, sf, occupants, orientation,
+                       deckType, roofCover, roofColor, roofRValue, suspCeiling,
+                       atticCond, ceilingHeight, wallFinish, wallConstruction,
+                       wallColor, wallRValue, wallHeight, partConstruction,
+                       partRValue, floorType, floorRValue, glassMode, glassU,
+                       glassSHGC, doorType, occupancyType, lightingWattsPerSF,
+                       equipWattsPerSF, heatGenEquipment, kitchenExhCFM,
+                       makeupAirCFM, infiltration, acNewExisting, acMounting,
+                       hvacType, heatType).
+  code_checks dict  — optional, keyed by field name; each value {max, label}.
+                       Only "lightingWattsPerSF" is wired to a badge today.
+                       Absent key => no badge rendered for that field.
+  signed      bool  — True after a successful submit; shows the locked
+                       success state instead of the form.
+  token       str   — the current magic-link token; used to build the form's
+                       POST action URL back to this same route.
+
+Deliberately dropped vs. the original Wix admin-review.html this replaces:
+  - Admin-mode markup/CSS/JS (contenteditable, admin action bar) — admin
+    editing now happens on /job/<job_id>/star, not here.
+  - "Services Requested" checkboxes + the live fee/engagement-day calculator
+    JS — the admin decides scope/fee/engagement days ahead of time on the
+    star page; this page just displays them.
+  - postMessage wiring (no parent Velo page anymore) — this is a normal
+    server-rendered page with a normal HTML form POST.
+  - The "Window Properties" glass sub-mode (frame/glazing/tint auto-lookup) —
+    simplified to two modes, "U-Factor & SHGC" and "No glass".
+  - Drive "snippet" source-image display — no snippet data is in the context
+    contract yet; add a `snippets` dict following the `code_checks` pattern
+    if this is wanted later.
+  - Project name / address / owner are shown read-only in the Proposal card
+    (as in the original) rather than turned into new editable inputs, since
+    they're already set by the intake pipeline before this link is sent —
+    letting a client silently edit them would drift from what Adicot's
+    intake already extracted. Only Building Basics onward are real inputs.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{{ job.title or job.projectAddress or "Project" }} — Adicot Engineering</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --orange:#E8740A;--orange-lt:#FDF0E4;--orange-mid:#F4C48A;
+  --cream:#F7F3EE;--cream-dark:#EDE8E1;--dark:#1A1A1A;--mid:#5C5C5C;
+  --light:#9A9A9A;--border:#DDD8D0;--white:#FFFFFF;
+  --green:#2D6A2D;--green-lt:#E6F2E6;--blue:#1D4ED8;--blue-lt:#EFF6FF;
+  --sans:'IBM Plex Sans',sans-serif;--serif:'IBM Plex Serif',serif;
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 2px 12px rgba(0,0,0,0.08);--shadow-lg:0 8px 32px rgba(0,0,0,0.12);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--cream);color:var(--dark);font-size:14px;line-height:1.6;padding:0 0 80px}
+.page-wrap{max-width:1080px;margin:0 auto;padding:40px 24px}
+.portal-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:2px solid var(--border)}
+.project-name{font-family:var(--serif);font-size:28px;font-weight:600;color:var(--dark);line-height:1.2;margin-bottom:4px}
+.project-address{font-size:13px;color:var(--mid);margin-bottom:10px}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-mid)}
+.status-badge.signed{background:var(--green-lt);color:var(--green);border-color:#A3D9A3}
+.header-right{text-align:right;flex-shrink:0;margin-left:20px}
+.firm-name{font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px}
+.firm-sub{font-size:11px;color:var(--light)}
+.firm-pe{font-size:11px;color:var(--orange);font-weight:600;margin-top:2px}
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--cream-dark)}
+.card-title{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--orange)}
+.card-tag{font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--cream);color:var(--mid);border:1px solid var(--border)}
+.proposal-meta{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.meta-item{display:flex;align-items:baseline;gap:12px;background:var(--cream);border-radius:var(--radius-sm);padding:7px 14px}
+.meta-label{font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--light);flex-shrink:0;width:108px}
+.meta-value{font-size:13px;font-weight:600;color:var(--dark);flex:1;min-width:0}
+.fee-display{font-family:var(--serif);font-size:36px;font-weight:600;color:var(--dark);margin-bottom:4px}
+.fee-note{font-size:12px;color:var(--mid);margin-bottom:14px}
+.fee-breakdown{border-top:1px solid var(--cream-dark);padding-top:12px}
+.fee-line{display:flex;justify-content:space-between;font-size:12px;color:var(--mid);padding:3px 0}
+.fee-line span:last-child{font-weight:600;color:var(--dark)}
+.deliverables-list{list-style:none}
+.deliverables-list li{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;color:var(--dark);border-bottom:1px solid var(--cream-dark)}
+.deliverables-list li:last-child{border-bottom:none}
+.deliverables-list li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--orange);flex-shrink:0;margin-top:6px}
+.section-divider{display:flex;align-items:center;gap:12px;margin:16px 0 16px}
+.divider-line{flex:1;height:1px;background:var(--border)}
+.divider-label{font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--light);white-space:nowrap}
+.wo-intro{font-size:13px;color:var(--mid);line-height:1.6;margin-bottom:20px;padding:12px 16px;background:var(--orange-lt);border-radius:var(--radius-sm);border-left:3px solid var(--orange)}
+.wo-section-title{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--orange);padding:8px 0 6px;margin-bottom:0}
+.field-row{margin-bottom:14px}
+.field-label{display:block;font-size:11px;font-weight:600;color:var(--mid);letter-spacing:0.3px;margin-bottom:6px}
+.field-input{width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:9px 13px;font-family:var(--sans);font-size:13px;color:var(--dark);background:#FAFAF8;outline:none;transition:border-color 0.15s,background 0.15s}
+.field-input:focus{border-color:var(--orange);background:var(--white)}
+.field-input::placeholder{color:#C0BDB8}
+select.field-input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239A9A9A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer}
+textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.hint{font-size:11px;color:var(--light);margin-top:4px;line-height:1.5}
+.info-box{background:var(--blue-lt);border-radius:var(--radius-sm);padding:10px 13px;font-size:11px;color:var(--blue);margin-bottom:12px;line-height:1.5}
+.info-box.orange{background:var(--orange-lt);color:#8B4500;border-left:3px solid var(--orange)}
+.cond-block{border-left:3px solid var(--orange);padding-left:16px;margin:10px 0 14px;animation:fadeSlide 0.2s ease}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.dynamic-label{font-size:11px;font-weight:600;color:var(--orange);background:var(--orange-lt);padding:3px 10px;border-radius:20px;display:inline-block;margin-top:4px}
+.terms-block{background:var(--cream);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-height:140px;overflow-y:auto;font-size:11px;color:var(--mid);line-height:1.7;margin-bottom:16px}
+.terms-block::-webkit-scrollbar{width:4px}
+.terms-block::-webkit-scrollbar-track{background:transparent}
+.terms-block::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.terms-check-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--cream-dark);cursor:pointer;margin-bottom:4px;user-select:none}
+.terms-check-row:last-of-type{border-bottom:none}
+.terms-check-box{width:20px;height:20px;border:2px solid var(--border);border-radius:6px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;transition:all 0.15s;background:white}
+.terms-check-box.checked{background:var(--orange);border-color:var(--orange);color:white}
+.terms-check-label{font-size:12px;color:var(--dark);line-height:1.5}
+.sign-section{background:var(--dark);border-radius:var(--radius);padding:24px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:24px}
+.sign-text{color:#9CA3AF;font-size:13px;line-height:1.5}
+.sign-text strong{color:white;display:block;font-size:14px;margin-bottom:3px}
+.btn-sign{background:var(--orange);color:white;border:none;border-radius:var(--radius-sm);padding:14px 32px;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;flex-shrink:0;letter-spacing:0.2px}
+.btn-sign:hover:not(:disabled){background:#C4630A;transform:translateY(-1px);box-shadow:0 4px 16px rgba(232,116,10,0.35)}
+.btn-sign:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.btn-print{background:transparent;color:#6B7280;border:none;font-family:var(--sans);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;margin-top:10px;display:block;text-align:center;width:100%}
+.success-state{text-align:center;padding:48px 0;animation:fadeSlide 0.4s ease}
+.success-icon{width:72px;height:72px;background:var(--green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px}
+.success-title{font-family:var(--serif);font-size:28px;color:var(--dark);margin-bottom:8px}
+.success-sub{font-size:14px;color:var(--mid);line-height:1.6;margin-bottom:24px}
+.next-steps{text-align:left;background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:20px;max-width:460px;margin:0 auto}
+.next-step{display:flex;gap:12px;padding:8px 0;font-size:13px;color:var(--dark);line-height:1.5;border-bottom:1px solid var(--cream-dark)}
+.next-step:last-child{border-bottom:none}
+.step-num{width:22px;height:22px;background:var(--orange);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
+.two-panel{display:grid;grid-template-columns:360px 1fr;gap:28px;align-items:start}.panel-left{min-width:0}.panel-right{min-width:0}@media(max-width:800px){.two-panel{grid-template-columns:1fr}}@media(max-width:560px){.page-wrap{padding:24px 16px}.portal-header{flex-direction:column;gap:12px}.header-right{text-align:left;margin-left:0}.proposal-meta{grid-template-columns:1fr}.two-col,.three-col{grid-template-columns:1fr}.sign-section{flex-direction:column}.btn-sign{width:100%}}
+@media print{body{background:white}.btn-sign,.btn-print,.sign-section{display:none}.terms-block{max-height:none!important;overflow:visible!important;border:none!important}.panel-right{page-break-before:always}textarea.field-input{max-height:none!important;overflow:visible!important;height:auto!important}}
+</style>
+</head>
+<body>
+
+<div class="page-wrap">
+  <div class="portal-header">
+    <div class="header-left">
+      <div class="project-name" id="projectName">{{ job.title or job.projectAddress or "Project" }}</div>
+      <div class="status-badge{{ ' signed' if signed else '' }}" id="statusBadge">{{ '✓ Signed — Current Work' if signed else (job.status or 'Pending Review') }}</div>
+    </div>
+    <div class="header-right">
+      <div class="firm-name">Adicot, Inc.</div>
+      <div class="firm-sub">HVAC / Mechanical Engineering</div>
+      <div class="firm-pe">Adrienne Gould-Choquette, PE #77100</div>
+    </div>
+  </div>
+
+  {% if signed %}
+  <div class="success-state" id="successState">
+    <div class="success-icon">&#10003;</div>
+    <div class="success-title">Agreement executed.</div>
+    <p class="success-sub">Your project specifications have been submitted and this project is now locked and in Adrienne&apos;s queue.<br/>You&apos;ll receive a confirmation email shortly.</p>
+    <div class="next-steps">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#9CA3AF;margin-bottom:10px">What happens next</div>
+      <div class="next-step"><div class="step-num">1</div><span>Adrienne reviews your project specifications and confirms all information</span></div>
+      <div class="next-step"><div class="step-num">2</div><span>You&apos;ll receive a project intake confirmation within 1 business day</span></div>
+      <div class="next-step"><div class="step-num">3</div><span>Preliminary calculations begin once background drawings are confirmed</span></div>
+    </div>
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('portal', token=token) }}" id="portalForm">
+  <div class="two-panel">
+  <div class="panel-left">
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Proposal</div><div class="divider-line"></div></div>
+    <div class="wo-intro" style="margin-bottom:20px">Please review your proposal and contract terms, then sign when ready.<button type="button" onclick="document.getElementById('sign-anchor').scrollIntoView({behavior:'smooth',block:'start'})" style="display:block;margin-top:10px;background:var(--orange);color:white;border:none;border-radius:6px;padding:8px 18px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.2px">Jump to Signature &#8595;</button></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Proposal</div><div class="card-tag">Version 1.0</div></div>
+      <div class="proposal-meta">
+        <div class="meta-item"><div class="meta-label">Prepared For</div><div class="meta-value">{{ job.clientName or '' }}{% if job.clientCompany %} &middot; {{ job.clientCompany }}{% endif %}{% if not job.clientName and not job.clientCompany %}&#8212;{% endif %}</div></div>
+        <div class="meta-item"><div class="meta-label">Property Owner</div><div class="meta-value">{{ job.propertyOwner or job.owner or '&#8212;' }}</div></div>
+        <div class="meta-item"><div class="meta-label">Project Address</div><div class="meta-value" id="projectAddress">{{ job.projectAddress or '&#8212;' }}</div></div>
+        <div class="meta-item"><div class="meta-label">Contact</div><div class="meta-value" style="font-size:12px">{{ job.clientEmail or '' }}{% if job.clientEmail and job.clientPhone %} &middot; {% endif %}{{ job.clientPhone or '' }}{% if not job.clientEmail and not job.clientPhone %}&#8212;{% endif %}</div></div>
+        <div class="meta-item"><div class="meta-label">Service</div><div class="meta-value">{{ job.productService or '&#8212;' }}</div></div>
+        <div class="meta-item"><div class="meta-label">Approx. Area</div><div class="meta-value">{{ (job.sf ~ ' SF') if job.sf else '&#8212;' }}</div></div>
+        <div class="meta-item"><div class="meta-label">Quote Date</div><div class="meta-value" id="proposalDate">&#8212;</div><div style="font-size:10px;color:var(--light);margin-top:2px">Valid for 30 days</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Fee</div></div>
+      <div class="fee-display">${{ job.totalCost or '&#8212;' }}</div>
+      <div class="fee-note">Due upon Adicot submitting client-approved documents</div>
+      <div class="fee-breakdown">
+        <div class="fee-line"><span>Due at award</span><span>{{ job.feeDueAward or '$0' }}</span></div>
+        <div class="fee-line"><span>Due at delivery</span><span>${{ job.totalCost or '&#8212;' }}</span></div>
+        <div class="fee-line"><span>Additional changes</span><span>$225/hr</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Deliverables</div></div>
+      <ul class="deliverables-list">
+        {% if job.deliverablesOverride %}
+          {% for d in job.deliverablesOverride.split('\n') if d.strip() %}<li>{{ d.strip() }}</li>{% endfor %}
+        {% else %}
+          <li>Load Calculations (ASHRAE CLTD method)</li>
+          <li>Outside Air Calculation</li>
+          <li>Air Balance Report</li>
+          <li>Zone Map</li>
+          <li>One design review included</li>
+          <li>All documents emailed as digitally signed PDF</li>
+        {% endif %}
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Engagement Duration</div></div>
+      <div style="background:#FFF8E8;border:1.5px solid #F4C48A;border-radius:8px;padding:14px 16px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;color:#2C2C2A;margin-bottom:12px">
+        ENGAGEMENT DURATION IS APPROXIMATELY
+        <span style="font-weight:700;color:#E8740A;margin:0 4px;border-bottom:2px solid #E8740A;padding:0 2px;display:inline-block;min-width:24px;text-align:center">{{ job.engagementDays or 'TBD' }}</span>
+        BUSINESS DAYS BEGINNING WHEN PROJECT SPECIFICATIONS ARE COMPLETE, BACKGROUNDS HAVE BEEN PROVIDED, &amp; CONTRACT HAS BEEN SIGNED.
+      </div>
+      <div style="font-size:12px;color:#5C5C5C;line-height:1.7;font-style:italic">
+        Adicot, Inc. shall not be responsible for delays caused by factors beyond the Design Professional&apos;s reasonable control, including but not limited to delays because of strikes, lockouts, work slowdowns or stoppages, government ordered industry shutdowns, power or server outages, acts of nature, widespread infectious disease outbreaks (including, but not limited to epidemics and pandemics), failure of any governmental or other regulatory authority to act in a timely manner, failure of the Client to furnish timely information or approve or disapprove of the Design Professional&apos;s services or work product, or delays caused by faulty performance by the Client&apos;s or by contractors of any level. When such delays beyond the Design Professional&apos;s reasonable control occur, the Client agrees that the Design Professional shall not be responsible for damages, nor shall the Design Professional be deemed in default of this Agreement.
+      </div>
+    </div>
+
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Sign &amp; Submit</div><div class="divider-line"></div></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Contract Terms</div></div>
+
+      <div class="terms-block" style="max-height:220px">
+        <p style="margin-bottom:10px"><strong>1.</strong> The terms and conditions of the agreement apply in full to the services provided under this Proposal. In proceeding with this agreement, Client, acting with proper authority, has agreed to and executed this Proposal and it now becomes the binding Contract.</p>
+        <p style="margin-bottom:10px"><strong>2.</strong> Changes to the project will be communicated and agreed upon, and documented in writing via email. Changes resulting in additional time spent on the project will be billed at an hourly rate of $225/hour.</p>
+        <p style="margin-bottom:10px"><strong>3.</strong> Beginning on the first day an invoice is past due Client will incur an administrative fee of 1.5% of the contract value. Every additional 30 days the invoice remains unpaid, Client will incur an additional administrative fee of 1.5% of the total contract value until the invoice has been paid in full.</p>
+      </div>
+
+      <div id="statuteBlock" style="background:#1A1A1A;border-radius:8px;padding:18px 20px;margin:12px 0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#fff;line-height:1.7;text-align:justify">
+        4. PURSUANT TO FLORIDA STATUTE &sect; 558.035, AN INDIVIDUAL EMPLOYEE OR AGENT OF ADICOT, INC. MAY NOT BE HELD INDIVIDUALLY LIABLE FOR DAMAGES RESULTING FROM NEGLIGENCE OCCURRING WITHIN THE COURSE AND SCOPE OF PROFESSIONAL SERVICES RENDERED UNDER THIS PROFESSIONAL SERVICES CONTRACT.
+      </div>
+
+      <div style="font-size:11px;color:#5C5C5C;margin:8px 0 12px">Additionally, Client shall maintain professional liability insurance required under the contract; and any damages are solely economic in nature and the damages do not extend to personal injuries or property not subject to the contract.</div>
+
+      <div class="terms-block" style="max-height:240px;font-size:11px">
+        <strong>GENERAL CONDITIONS</strong><br/><br/>
+        <strong>1. CONTRACT</strong> &#8212; These Contract Provisions and the accompanying Proposal constitute the full and complete Agreement between the parties and may be changed, amended, added to, superseded, or waived only if both parties specifically agree in writing to such amendment of the Agreement. In the event of any inconsistency between these Contract Provisions and any proposal, contract, purchase order, requisition, notice to proceed, or like document, these Contract Provisions shall govern.<br/><br/>
+        <strong>2. RIGHT OF ENTRY</strong> &#8212; When entry to the property is required for ADICOT, INC to perform its services, Client agrees to obtain legal right-of-entry on the property. ADICOT, INC&apos;s obligation is to endeavor to guard Client against defects and deficiencies. Site visits are for observation and not inspection. Review of submittals is for the limited purpose of checking for conformance with information given and design concept and not for determining the accuracy of details (dimensions, quantities, installation, or performance). ADICOT, INC is not responsible for means, methods, sequencing, techniques, etc. ADICOT, INC. is not responsible for safety programs. Design Professional cannot stop work but can reject or recommend rejection of work.<br/><br/>
+        <strong>3. DOCUMENTS</strong> &#8212; All reports, notes, drawings, specifications, data, calculations, and other documents, including those in electronic form, prepared by ADICOT, INC are instruments of ADICOT, INC&apos;s service that shall remain ADICOT, INC&apos;s property. Client agrees not to use ADICOT, INC generated documents for marketing purposes, for projects other than the project for which the documents were prepared by ADICOT, INC, or for future modifications to this project, without ADICOT, INC&apos;s express written permission. Any reuse or distribution to third parties without such express written permission or project-specific adaptation by ADICOT, INC will be at Client&apos;s sole risk and without liability to ADICOT, INC or its employees, subsidiaries, independent professional associates, sub-consultants, and subcontractors. Client shall, to the fullest extent permitted by law, defend, indemnify, and hold harmless ADICOT, INC from and against any and all costs, expenses, fees, losses, claims, demands, liabilities, suits, actions, and damages whatsoever arising out of or resulting from such unauthorized reuse or distribution. ADICOT, INC disclaims any warranties. ADICOT, INC is only responsible for the accuracy of information that it, or its consultants, provides and/or inputs into the model. ADICOT, INC has no control over and is not responsible for the accuracy or completeness of information inputted by other parties.<br/><br/>
+        <strong>4. DISPOSAL OF SAMPLES</strong> &#8212; ADICOT, INC will discard samples upon completion of the work covered under this Agreement, unless Client instructs otherwise in writing.<br/><br/>
+        <strong>5. HAZARDOUS MATERIALS</strong> &#8212; The scope of ADICOT, INC&apos;s services for this Agreement does not include any responsibility for detection, remediation, accidental release, or services relating to waste, oil, asbestos, lead, or other hazardous materials, as defined by Federal, State, and local laws or regulations.<br/><br/>
+        <strong>6. CONSTRUCTION PHASE SERVICES</strong> &#8212; If ADICOT, INC performs any services during the construction phase of the project, ADICOT, INC shall not supervise, direct, or have control over Contractor&apos;s work. ADICOT, INC shall not have authority over or responsibility for the construction means, methods, techniques, sequences or procedures or for safety precautions and programs in connection with the work of the Contractor. ADICOT, INC does not guarantee the performance of the construction contract by the Contractor and does not assume responsibility for the Contractor&apos;s failure to furnish and perform its work in accordance with the Contract Documents.<br/><br/>
+        <strong>7. STANDARD OF CARE</strong> &#8212; ADICOT, INC and its employees, subsidiaries, independent professional associates, sub-consultants, and subcontractors will exercise that degree of care and skill ordinarily practiced under similar circumstances by design professionals providing similar services. Client agrees that services provided will be rendered without any warranty, express or implied. ADICOT, INC shall exercise usual and customary professional care in its efforts to comply with applicable codes, regulations, laws rules, ordinances, and such other requirements in effect as of the date of execution of this Agreement.<br/><br/>
+        <strong>8. OPINION OF PROBABLE COSTS</strong> &#8212; When required as part of its work, ADICOT, INC will furnish opinions of probable cost, but does not guarantee the accuracy of such estimates. Opinions of probable cost, financial evaluations, feasibility studies, economic analyses of alternate solutions, and utilitarian considerations of operations and maintenance costs prepared by ADICOT, INC hereunder will be made on the basis of ADICOT, INC&apos;s experience and qualifications and will represent ADICOT, INC&apos;s judgment as an experienced and qualified design professional. However, users of the probable cost opinions must recognize that ADICOT, INC does not have control over the cost of labor, material, equipment, or services furnished by others or over market conditions or contractors&apos; methods of determining prices or performing the work.<br/><br/>
+        <strong>9. SUSPENSION OF WORK</strong> &#8212; Client may, at any time, by written notice, suspend further work by ADICOT, INC. Client shall remain liable for, and shall promptly pay ADICOT, INC for all services rendered to the date of suspension of services, plus suspension charges, which shall include the cost of assembling documents, personnel and equipment, rescheduling or reassignment, and commitments made to others on Client&apos;s behalf. Client shall pay ADICOT, INC pursuant to the rates and charges set forth in the Proposal. ADICOT, INC will submit monthly invoices to Client for services rendered and expenses incurred. If Client does not pay invoices within thirty (30) days of submission of the invoice, ADICOT, INC may, upon written notice to Client, suspend further work until payments are brought current. Client agrees to indemnify and hold ADICOT, INC harmless from any claim or liability resulting from such suspension.<br/><br/>
+        <strong>10. CHANGES OR DELAYS</strong> &#8212; Unless the accompanying Proposal provides otherwise, the proposed fees constitute ADICOT, INC&apos;s estimate to perform the services required to complete the Project. Required services often are not fully definable in the initial planning; accordingly, developments may dictate a change in the scope of services to be performed. Where this occurs, changes in the Agreement shall be negotiated and an equitable adjustment shall be made. Costs and schedule commitments shall be subject to renegotiation for unreasonable delays caused by Client&apos;s failure to provide specified facilities, direction, or information, or if ADICOT, INC&apos;s failure to perform is due to any act of God, labor trouble, fire, inclement weather, act of governmental authority, failure of transportation, accident, power failure, or interruption or any other cause beyond the reasonable control of ADICOT, INC. Temporary work stoppage caused by any of the above may result in additional cost beyond that outlined in the accompanying Proposal.<br/><br/>
+        <strong>11. LIABILITY</strong> &#8212; To the fullest extent permitted by law, the total liability, in the aggregate, of ADICOT, INC and ADICOT, INC&apos;s officers, directors, employees, agents, and consultants to Client and anyone claiming by, through or under Client, for any and all injuries, claims, losses, expenses, or damages whatsoever arising out of or in any way related to ADICOT, INC&apos;s services, the Project or this Agreement, from any cause or causes whatsoever, including but not limited to, negligence, strict liability, breach of contract or breach of warranty shall not exceed the total compensation received by ADICOT, INC under this Agreement, or the total amount of $5,000, whichever is greater.<br/><br/>
+        <strong>12. CONFLICTS OF INTEREST</strong> &#8212; This assignment may involve parties with adverse interests to clients with whom ADICOT, INC has current or past relationships. It is ADICOT, INC policy to make reasonable attempts to identify such relationships prior to acceptance of a professional assignment, but ADICOT, INC cannot assure that conflicts or perceived conflicts will not arise, and ADICOT, INC does not accept responsibility for such occurrences.<br/><br/>
+        <strong>13. CONFIDENTIALITY</strong> &#8212; If Client assigns the Agreement, ADICOT, INC. does not have to execute any documents that might increase ADICOT, INC.&apos;s contractual or legal obligations or the availability or cost of its professional or general liability insurance. ADICOT, INC.&apos;s obligation to maintain confidential information is not absolute. Confidentiality exception if the information is in public domain; if disclosures are in compliance with legal orders; and if disclosure is reasonably necessary for ADICOT, INC. to defend itself in a claim.<br/><br/>
+        <strong>14. REIMBURSABLE EXPENSES</strong> &#8212; ADICOT, INC will bill direct nonpayroll expenses at cost plus 10%. Direct expenses include all reasonable expenses resulting from required responses to subpoenas or court orders related to work under the Contract.<br/><br/>
+        <strong>15. CONDOMINIUMS</strong> &#8212; Contractual Limitation of Liability: To the fullest extent permitted by law, the total liability of Adicot, Inc. and Adicot, Inc.&apos;s officers, directors, employees, agents, and independent professional associates and design professionals to Owner and any one claiming by, through or under Owner, for any and all injuries, claims, losses, expenses, or damages arising out of or in any way related to Adicot, Inc.&apos;s services, the project or this Agreement, from any cause or causes whatsoever, including but not limited to, the negligence, errors, omissions, strict liability, breach of contract, breach of warranty of Adicot, Inc. or Adicot, Inc.&apos;s officers, directors, employees, agents or independent professional associates or design professionals, or any of them, shall not exceed $50,000.<br/><br/>
+        <em>Contractual &#8212; Indemnity:</em> The Owner acknowledges the risks to Adicot, Inc. inherent in condominium projects and the disparity between Adicot, Inc.&apos;s fee and Adicot, Inc.&apos;s potential liability for problems or alleged problems with such condominium projects. Therefore, the Owner agrees, to the fullest extent permitted by law, to indemnify and hold harmless Adicot, Inc., its officers, directors, employees, consultants, and sub-consultants (collectively Design Professional) against all damages, liabilities or costs, including reasonable attorneys&apos; fees and defense costs, arising out of or in any way connected with the services performed under this Agreement except for damages, liabilities or costs arising from Adicot, Inc.&apos;s sole negligence or willful misconduct.<br/><br/>
+        <em>Contractual &#8212; Maintenance:</em> The Owner agrees that the bylaws of the Condominium Association established for the Project will require that the Association perform, as recommended in the Maintenance Manual, all necessary routine maintenance, maintenance inspections and any other necessary repairs and maintenance called for as a result of these maintenance inspections. The bylaws shall also contain an appropriate waiver and indemnity in favor of the Owner, the Design Professional and its consultants and sub-consultants and the Contractor if the maintenance recommendations contained in the Maintenance Manual are not performed. Maintenance manuals may not be all-inclusive.<br/><br/>
+        <strong>16. MISCELLANEOUS</strong><br/>
+        <em>Governing Law:</em> The laws of the state in which ADICOT, INC office executing this Agreement is located shall govern the validity and interpretation of this Agreement.<br/><br/>
+        <em>Invalid Terms:</em> In the event any of these Contract Provisions are found to be illegal or otherwise unenforceable, the unenforceable Contract Provision will be stricken. Striking such a Contract Provision shall have no effect on the enforceability of the remaining Contract Provisions and those remaining Contract Provisions shall continue in full force and effect as if the unenforceable Contract Provision were never included in the Agreement.<br/><br/>
+        <em>Mediation:</em> Client and ADICOT, INC agree to submit all claims and disputes arising out of this Agreement to non-binding mediation prior to the initiation of legal proceedings. This provision shall survive completion or termination of this Agreement; however, neither party shall seek mediation of any claim or dispute arising out of this Agreement beyond the period of time that would bar the initiation of legal proceedings to litigate such claim or dispute under the applicable law.<br/><br/>
+        <em>ADICOT, INC Reliance:</em> ADICOT, INC shall be entitled to rely, without liability, on the accuracy and completeness of any and all information provided by Client, Client&apos;s consultants and contractors, and information from public records, without the need for independent verification.<br/><br/>
+        <em>Certifications:</em> ADICOT, INC shall not be required to sign any documents, no matter by whom requested, that would result in ADICOT, INC&apos;s having to certify, guaranty, or warrant the existence of conditions that ADICOT, INC cannot ascertain.<br/><br/>
+        <em>Third Parties:</em> Nothing contained in this Agreement shall create a contractual relationship with, or a cause of action in favor of, a third party against either Client or ADICOT, INC. ADICOT, INC&apos;s services hereunder are being performed solely for the benefit of Client, and no other entity shall have any claim against ADICOT, INC because of this Agreement or ADICOT, INC&apos;s performance of services hereunder.<br/><br/>
+        <em>Consequential Damages:</em> Neither Client nor ADICOT, INC shall be liable to the other or shall make any claim for any incidental, indirect or consequential damages arising out of, or connected in any way to the Project or this Agreement. This mutual waiver includes, but is not limited to, damages related to loss of use, loss of profits, loss of income, loss of reputation, unrealized savings or diminution of property value and shall apply to any cause of action including negligence, strict liability, breach of contract and breach of warranty.
+      </div>
+
+      <div style="padding:4px 0 12px">
+        <input type="checkbox" name="agree_terms_1" id="t1-real" style="display:none">
+        <div class="terms-check-row" onclick="toggleTerms('t1')">
+          <div class="terms-check-box" id="t1"> </div>
+          <div class="terms-check-label">I have read and agree to the General Conditions above (Terms 1&ndash;16).</div>
+        </div>
+        <input type="checkbox" name="agree_terms_2" id="t2-real" style="display:none">
+        <div class="terms-check-row" onclick="toggleTerms('t2')">
+          <div class="terms-check-box" id="t2"> </div>
+          <div class="terms-check-label">I agree to the payment terms: full fee due upon Adicot submitting client-approved documents. Design changes are billed at $225/hr.</div>
+        </div>
+        <input type="checkbox" name="agree_terms_3" id="t3-real" style="display:none">
+        <div class="terms-check-row" onclick="toggleTerms('t3')">
+          <div class="terms-check-box" id="t3"> </div>
+          <div class="terms-check-label">I authorize Adicot, Inc. to begin work upon receipt of background drawings and a fully executed contract.</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Your Name</label><input class="field-input" type="text" name="signer_name" id="signerName" placeholder="Type your full name" oninput="updateSignButton()"></div>
+        <div class="field-row"><label class="field-label">Your Title</label><input class="field-input" type="text" name="signer_title" id="signerTitle" placeholder="e.g. Owner, Architect" oninput="updateSignButton()"></div>
+      </div>
+    </div>
+
+    <div class="sign-section" id="sign-anchor">
+      <div class="sign-text"><strong>Ready to proceed?</strong>By submitting, you execute this agreement and authorize Adicot, Inc. to begin work upon receipt of background drawings.</div>
+      <button class="btn-sign" id="signButton" type="submit" disabled>Sign &amp; Submit &#8594;</button>
+    </div>
+    <button class="btn-print" type="button" onclick="window.print()">Print a copy of this form</button>
+  </div><!-- /panel-left -->
+
+  <div class="panel-right">
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Project Specifications</div><div class="divider-line"></div></div>
+    <div class="wo-intro">Please review and complete the project specifications below.</div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Building Basics</div></div>
+      <div class="field-row"><label class="field-label">Building Status</label><select class="field-input" name="buildingStatus" id="inputStatus"><option value="">Select&#8230;</option><option value="Tenant Buildout" {% if job.buildingStatus == 'Tenant Buildout' %}selected{% endif %}>Tenant Buildout</option><option value="New Construction" {% if job.buildingStatus == 'New Construction' %}selected{% endif %}>New Construction</option><option value="New Addition" {% if job.buildingStatus == 'New Addition' %}selected{% endif %}>New Addition</option><option value="Renovation" {% if job.buildingStatus == 'Renovation' %}selected{% endif %}>Renovation</option></select></div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Approx. Area (SF)</label><input class="field-input" type="text" name="sf" id="inputArea" placeholder="e.g. 1440" value="{{ job.sf or '' }}"></div>
+        <div class="field-row"><label class="field-label">Total Occupants</label><input class="field-input" type="text" name="occupants" id="inputOccupants" placeholder="e.g. 43" value="{{ job.occupants or '' }}"></div>
+      </div>
+      <div class="field-row"><label class="field-label">Primary Orientation (main facade faces)</label><select class="field-input" name="orientation" id="inputOrientation"><option value="">Select&#8230;</option>{% for opt in ['North','Northeast','East','Southeast','South','Southwest','West','Northwest'] %}<option value="{{ opt }}" {% if job.orientation == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Roof &amp; Ceiling</div></div>
+      <div id="roofSpecificFields">
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Deck / Frame Type</label><select class="field-input" name="deckType" id="inputDeckType"><option value="">Select&#8230;</option>{% for opt in ['Steel deck','Concrete deck','Wood deck','Metal frame','Wood frame','Other'] %}<option value="{{ opt }}" {% if job.deckType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">Roof Covering</label><select class="field-input" name="roofCover" id="inputRoofCover"><option value="">Select&#8230;</option>{% for opt in ['TPO','EPDM','BUR/Modified bitumen','Metal','Tile','Shingle','Other'] %}<option value="{{ opt }}" {% if job.roofCover == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="field-row"><label class="field-label">Roof Color</label><select class="field-input" name="roofColor" id="inputRoofColor"><option value="">Select&#8230;</option><option value="Light" {% if job.roofColor == 'Light' %}selected{% endif %}>Light (white, light gray, tan)</option><option value="Medium" {% if job.roofColor == 'Medium' %}selected{% endif %}>Medium (medium gray)</option><option value="Dark" {% if job.roofColor == 'Dark' %}selected{% endif %}>Dark (dark gray, dark brown)</option></select></div>
+      <div class="field-row"><label class="field-label">Roof R-Value</label><input class="field-input" type="text" name="roofRValue" id="inputRoofR" placeholder="e.g. R-30" value="{{ job.roofRValue or '' }}"></div>
+      </div><!-- /roofSpecificFields -->
+      <div class="field-row"><label class="field-label">Suspended Ceiling Below Deck?</label><select class="field-input" name="suspCeiling" id="inputSuspCeil" onchange="checkAttic()"><option value="">Select&#8230;</option>{% for opt in ['Suspended ACT (T-bar)','GWB','Open to structure','Conditioned space above — no roof load','Other'] %}<option value="{{ opt }}" {% if job.suspCeiling == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="cond-block" id="atticBlock" style="display:none">
+        <div class="field-row"><label class="field-label">Attic / Plenum Condition</label><select class="field-input" name="atticCond" id="inputAtticCond"><option value="">Select&#8230;</option>{% for opt in ['Sealed/conditioned plenum','Vented attic','None (flat roof)','Other'] %}<option value="{{ opt }}" {% if job.atticCond == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select><div class="hint">Vented vs. sealed affects CLTD roof type selection</div></div>
+      </div>
+      <div class="field-row"><label class="field-label">Default Ceiling Height</label><input class="field-input" type="text" name="ceilingHeight" id="inputCeilHeight" placeholder="e.g. 10'-0&quot;" value="{{ job.ceilingHeight or '' }}"><div class="hint">Note exceptions in Project Notes</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Walls, Floor &amp; Glass</div></div>
+      <div class="wo-section-title">Exterior Walls</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Finish</label><select class="field-input" name="wallFinish" id="inputWallFinish"><option value="">Select&#8230;</option>{% for opt in ['Stucco','EIFS','Brick','Metal panel','Other'] %}<option value="{{ opt }}" {% if job.wallFinish == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">Construction</label><select class="field-input" name="wallConstruction" id="inputWallConst"><option value="">Select&#8230;</option>{% for opt in ['CMU','CMU + rigid insul','ICF','Steel stud + batt','Steel stud + rigid insul','Wood frame','Other'] %}<option value="{{ opt }}" {% if job.wallConstruction == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="three-col">
+        <div class="field-row"><label class="field-label">Color</label><select class="field-input" name="wallColor" id="inputWallColor"><option value="">Select&#8230;</option><option value="Light" {% if job.wallColor == 'Light' %}selected{% endif %}>Light</option><option value="Medium" {% if job.wallColor == 'Medium' %}selected{% endif %}>Medium</option><option value="Dark" {% if job.wallColor == 'Dark' %}selected{% endif %}>Dark</option></select></div>
+        <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" name="wallRValue" id="inputWallR" placeholder="e.g. R-6" value="{{ job.wallRValue or '' }}"></div>
+        <div class="field-row"><label class="field-label">Exterior Wall Height</label><input class="field-input" type="text" name="wallHeight" id="inputWallHeight" placeholder="e.g. 14'-0&quot;" value="{{ job.wallHeight or '' }}"></div>
+      </div>
+      <div class="wo-section-title" style="margin-top:8px">Partition Walls</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Construction</label><select class="field-input" name="partConstruction" id="inputPartConst"><option value="NA" {% if job.partConstruction == 'NA' %}selected{% endif %}>NA &#8212; no insulated partitions</option>{% for opt in ['Metal stud (steel frame)','Wood stud','Concrete Block / CMU'] %}<option value="{{ opt }}" {% if job.partConstruction == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" name="partRValue" id="inputPartR" placeholder="NA or R-value" value="{{ job.partRValue or '' }}"></div>
+      </div>
+      <div class="wo-section-title" style="margin-top:8px">Flooring</div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Type</label><select class="field-input" name="floorType" id="inputFloorType"><option value="">Select&#8230;</option><option value="Slab on grade" {% if job.floorType == 'Slab on grade' %}selected{% endif %}>Slab on grade &#8212; no floor load</option><option value="Floor over conditioned space" {% if job.floorType == 'Floor over conditioned space' %}selected{% endif %}>Floor over conditioned space &#8212; no floor load</option><option value="Floor over unconditioned space" {% if job.floorType == 'Floor over unconditioned space' %}selected{% endif %}>Floor over unconditioned space (parking garage, crawl space)</option><option value="Wood frame over unconditioned space" {% if job.floorType == 'Wood frame over unconditioned space' %}selected{% endif %}>Wood frame over unconditioned space</option><option value="Elevated / exterior exposure" {% if job.floorType == 'Elevated / exterior exposure' %}selected{% endif %}>Elevated / exterior exposure (piers, cantilever)</option></select></div>
+        <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" name="floorRValue" id="inputFloorR" placeholder="NONE or R-value" value="{{ job.floorRValue or '' }}"></div>
+      </div>
+      <div class="wo-section-title" style="margin-top:8px">Glass</div>
+      <div class="info-box">Window and door dimensions must be labeled on submitted drawings. Unmeasured openings require field verification.</div>
+      <div class="field-row"><label class="field-label">How will you enter glass properties?</label><select class="field-input" name="glassMode" id="inputGlassMode" onchange="checkGlass()"><option value="U-Factor & SHGC" {% if job.glassMode != 'No glass' %}selected{% endif %}>U-Factor &amp; SHGC</option><option value="No glass" {% if job.glassMode == 'No glass' %}selected{% endif %}>No glass</option></select></div>
+      <div id="glassInputs">
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">U-Factor</label><input class="field-input" type="text" name="glassU" id="inputFixedU" placeholder="e.g. 0.28" value="{{ job.glassU or '' }}"></div>
+          <div class="field-row"><label class="field-label">SHGC</label><input class="field-input" type="text" name="glassSHGC" id="inputFixedSHGC" placeholder="e.g. 0.24" value="{{ job.glassSHGC or '' }}"></div>
+        </div>
+      </div>
+      <div class="field-row"><label class="field-label">Opaque Door Type</label><select class="field-input" name="doorType" id="inputDoorType"><option value="">Select&#8230;</option>{% for opt in ['Insulated Metal','Hollow metal','Solid wood','Storefront/glass','None'] %}<option value="{{ opt }}" {% if job.doorType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Internal Loads</div></div>
+      <div class="field-row"><label class="field-label">Occupancy Type</label><select class="field-input" name="occupancyType" id="inputOccType" onchange="updateOccDefaults()"><option value="">Select&#8230;</option>{% for opt in ['Dining / Fast food','Food prep / Kitchen','Office','Retail','Medical office','Assembly / Classrooms','Warehouse','Residential','Other'] %}<option value="{{ opt }}" {% if job.occupancyType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="two-col">
+        <div class="field-row">
+          <label class="field-label">Lighting W/SF</label>
+          <input class="field-input" type="text" name="lightingWattsPerSF" id="inputLightW" placeholder="e.g. 0.71" value="{{ job.lightingWattsPerSF or '' }}">
+          {% if code_checks and code_checks.lightingWattsPerSF %}
+          <div class="dynamic-label" id="lightingCodeMax">Code max: {{ code_checks.lightingWattsPerSF.max }} W/SF ({{ code_checks.lightingWattsPerSF.label }})</div>
+          {% else %}
+          <div class="dynamic-label" id="lightingCodeMax" style="display:none"></div>
+          {% endif %}
+        </div>
+        <div class="field-row"><label class="field-label">Equipment / Plug Load</label><input class="field-input" type="text" name="equipWattsPerSF" id="inputEquipW" placeholder="W/sf, BTU/h, or description" value="{{ job.equipWattsPerSF or '' }}"></div>
+      </div>
+      <div class="field-row"><label class="field-label">Heat Generating Equipment</label><textarea class="field-input" name="heatGenEquipment" id="inputHeatEquip" placeholder="List each piece of equipment with sensible and latent Btu/h if known.">{{ job.heatGenEquipment or '' }}</textarea></div>
+      <div id="kitchenExhSection" style="display:none">
+        <div class="info-box orange">Kitchen exhaust hood and makeup air system design is by others and not included in Adicot&apos;s scope. We can provide an exhaust CFM estimate based on your equipment inventory.</div>
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">Equipment under hood + linear distance</label><input class="field-input" type="text" name="kitchenExhCFM" id="inputKitchenExh" placeholder="e.g. 4ft fryer, 6ft griddle, 2ft range" value="{{ job.kitchenExhCFM or '' }}"><div class="hint">Adrienne will calculate CFM from this</div></div>
+          <div class="field-row"><label class="field-label">Makeup Air provided (if known)</label><input class="field-input" type="text" name="makeupAirCFM" id="inputMakeupAir" placeholder="CFM or N/A" value="{{ job.makeupAirCFM or '' }}"></div>
+        </div>
+      </div>
+      <div class="field-row"><label class="field-label">Construction Quality</label><select class="field-input" name="infiltration" id="inputInfiltration"><option value="">Select&#8230;</option><option value="Tight" {% if job.infiltration == 'Tight' %}selected{% endif %}>Tight &#8212; well-sealed new construction (~0.15 ACH)</option><option value="Average" {% if job.infiltration == 'Average' %}selected{% endif %}>Average (~0.35 ACH)</option><option value="Loose" {% if job.infiltration == 'Loose' %}selected{% endif %}>Loose &#8212; older building, frequent door use (~0.50 ACH)</option></select></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">HVAC System</div></div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">New or Existing?</label><select class="field-input" name="acNewExisting" id="inputACNew"><option value="">Select&#8230;</option><option value="New" {% if job.acNewExisting == 'New' %}selected{% endif %}>New</option><option value="Existing — reuse" {% if job.acNewExisting == 'Existing — reuse' %}selected{% endif %}>Existing &#8212; reuse</option><option value="Mix of both" {% if job.acNewExisting == 'Mix of both' %}selected{% endif %}>Mix of both</option></select></div>
+        <div class="field-row"><label class="field-label">Mounting Location</label><select class="field-input" name="acMounting" id="inputACMount"><option value="">Select&#8230;</option>{% for opt in ['Ground-level slab','Rooftop','Sidewall','Other'] %}<option value="{{ opt }}" {% if job.acMounting == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">System Type</label><select class="field-input" name="hvacType" id="inputHvacType"><option value="">Select&#8230;</option>{% for opt in ['Split','Package','Mini-split','VRF','PTAC','Other'] %}<option value="{{ opt }}" {% if job.hvacType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">Heat Type</label><select class="field-input" name="heatType" id="inputHeatType"><option value="">Select&#8230;</option>{% for opt in ['Heat Pump','Heat Strip','Gas Furnace','Other'] %}<option value="{{ opt }}" {% if job.heatType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+
+  </div><!-- /panel-right -->
+  </div><!-- /two-panel -->
+  </form>
+  {% endif %}
+</div>
+
+<script>
+function toggleTerms(id) {
+  const box = document.getElementById(id);
+  const real = document.getElementById(id + '-real');
+  const checked = !box.classList.contains('checked');
+  box.classList.toggle('checked', checked);
+  box.textContent = checked ? '✓' : ' ';
+  if (real) real.checked = checked;
+  updateSignButton();
+}
+function updateSignButton() {
+  const btn = document.getElementById('signButton');
+  if (!btn) return;
+  const termsOk = ['t1','t2','t3'].every(id => {
+    const real = document.getElementById(id + '-real');
+    return real && real.checked;
+  });
+  const nameOk = (document.getElementById('signerName').value || '').trim().length > 0;
+  const titleOk = (document.getElementById('signerTitle').value || '').trim().length > 0;
+  btn.disabled = !(termsOk && nameOk && titleOk);
+}
+function show(id, visible) { const el = document.getElementById(id); if (el) el.style.display = visible ? 'block' : 'none'; }
+function checkAttic() {
+  const el = document.getElementById('inputSuspCeil');
+  if (!el) return;
+  const v = el.value;
+  const condAbove = v === 'Conditioned space above — no roof load';
+  show('atticBlock', !condAbove && (v.startsWith('Suspended') || v === 'GWB'));
+  show('roofSpecificFields', !condAbove);
+}
+function checkGlass() {
+  const el = document.getElementById('inputGlassMode');
+  if (!el) return;
+  show('glassInputs', el.value !== 'No glass');
+}
+const FOOD_SVC = ['Dining / Fast food', 'Food prep / Kitchen'];
+function updateOccDefaults() {
+  const el = document.getElementById('inputOccType');
+  if (!el) return;
+  show('kitchenExhSection', FOOD_SVC.includes(el.value));
+}
+function getProjectState() {
+  const addr = (document.getElementById('projectAddress') && document.getElementById('projectAddress').textContent) || '';
+  const m = addr.match(/,\s*([A-Z]{2})\s+\d{5}/);
+  return m ? m[1] : '';
+}
+function updateStatuteText() {
+  const state = getProjectState();
+  const statBlock = document.getElementById('statuteBlock');
+  if (!statBlock) return;
+  if (state === 'FL') {
+    statBlock.innerHTML = '<strong>4. PURSUANT TO FLORIDA STATUTE &sect; 558.035, AN INDIVIDUAL EMPLOYEE OR AGENT OF ADICOT, INC. MAY NOT BE HELD INDIVIDUALLY LIABLE FOR DAMAGES RESULTING FROM NEGLIGENCE OCCURRING WITHIN THE COURSE AND SCOPE OF PROFESSIONAL SERVICES RENDERED UNDER THIS PROFESSIONAL SERVICES CONTRACT.</strong>';
+  } else if (state) {
+    statBlock.innerHTML = "<strong>4. LIMITATION OF LIABILITY — To the fullest extent permitted by law, the total liability, in the aggregate, of ADICOT, INC and its officers, directors, employees, agents, and consultants, for any and all injuries, claims, losses, expenses, or damages whatsoever arising out of or in any way related to ADICOT, INC’s professional services shall not exceed the total compensation received by ADICOT, INC under this Agreement, or the total amount of $5,000, whichever is greater. Neither party shall be liable for any incidental, indirect, or consequential damages.</strong>";
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const dateEl = document.getElementById('proposalDate');
+  if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  checkAttic();
+  checkGlass();
+  updateOccDefaults();
+  updateStatuteText();
+  updateSignButton();
+  document.querySelectorAll('textarea.field-input').forEach(ta => {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  });
+});
+</script>
+</body>
+</html>

@@ -74,6 +74,10 @@ import hvac_pipeline as hp
 from charts import render_all_charts
 import calendar_utils
 import wix_client
+import sheets_client
+import portal_tokens
+import lpd_max
+import email_client
 import validators
 import gdrive_client
 import spec_engine
@@ -144,6 +148,18 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD")
 # ─── Crop route auth (token, not basic-auth) ─────────────────────────
 CROP_TOKEN = os.environ.get("CROP_TOKEN")
 CROP_MAX_BYTES = 40 * 1024 * 1024   # 40 MB ceiling for the JSON body on this route
+
+# ─── CMS backend selection (Wix -> Google Sheets migration) ──────────
+# _cms is the single indirection point every CMS read/write in this file goes
+# through. Flip USE_SHEETS_CMS once the Sheet is populated (migrate_wix_to_sheets.py)
+# and AdicotProjects.gs is pointed at the Sheet — no other code here changes.
+USE_SHEETS_CMS = os.environ.get("USE_SHEETS_CMS", "").strip().lower() in ("1", "true", "yes")
+_cms = sheets_client if USE_SHEETS_CMS else wix_client
+
+# ─── Client portal magic-link secret (see portal_tokens.py) ──────────
+# Must match the PORTAL_TOKEN_SECRET Script Property set in the Apps Script
+# project (AdicotProjects.gs mints tokens with the same value).
+PORTAL_TOKEN_SECRET = os.environ.get("PORTAL_TOKEN_SECRET")
 
 # ─── Flask setup ─────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -569,7 +585,7 @@ def _build_cms_entries() -> list[dict]:
     assigned_reg = _load_assigned_registry()
     due_date_reg = _load_due_date_registry()
     entries = []
-    for p in wix_client.list_projects():
+    for p in _cms.list_projects():
         _id = (p.get("_id") or "").strip()
         if not _id:
             continue
@@ -631,7 +647,7 @@ def debug_wix_projects():
     being marked expired without needing direct Wix API access. Safe to
     remove once expiry is confirmed working against real data."""
     out = []
-    for p in wix_client.list_projects()[:10]:
+    for p in _cms.list_projects()[:10]:
         created = p.get("createdDate")
         out.append({
             "job_no": p.get("jobNo"),
@@ -646,15 +662,15 @@ def debug_wix_projects():
 @app.route("/debug/get-project/<wix_id>")
 @_require_auth
 def debug_get_project(wix_id: str):
-    """Temporary diagnostic: shows what wix_client.get_project() returns for a
+    """Temporary diagnostic: shows what _cms.get_project() returns for a
     given id, and whether it's found in list_projects() too, to debug why
     /job/<id>/star 404s for a project that appears in the digest/landing list."""
     from werkzeug.utils import secure_filename
     return jsonify({
         "wix_id": wix_id,
         "secure_filename_matches": secure_filename(wix_id) == wix_id,
-        "in_list_projects": any(p.get("_id") == wix_id for p in wix_client.list_projects()),
-        "get_project_result": wix_client.get_project(wix_id),
+        "in_list_projects": any(p.get("_id") == wix_id for p in _cms.list_projects()),
+        "get_project_result": _cms.get_project(wix_id),
     })
 
 
@@ -898,11 +914,11 @@ def delete_cms_project(wix_id: str):
     next page load."""
     if not wix_id:
         return jsonify({"ok": False, "error": "Missing project id."}), 400
-    if not wix_client.delete_project(wix_id):
+    if not _cms.delete_project(wix_id):
         return jsonify({"ok": False, "error": "Could not delete from Wix. If this "
                          "is the first attempt, check that the Wix API key has "
                          "\"Manage\" permission for Data Items."}), 502
-    wix_client.invalidate_cache()
+    _cms.invalidate_cache()
     shutil.rmtree(_safe_job_path(wix_id), ignore_errors=True)
     stage_reg = _load_stage_registry()
     if stage_reg.pop(wix_id, None) is not None:
@@ -1053,9 +1069,15 @@ def _wo_lookup(snap: dict, key):
     return None, keys[0]
 
 
-def _work_order_sections(snapshot: Optional[dict]) -> list[dict]:
-    """Build the grouped work order from a Wix snapshot. Booleans render Yes/No,
-    URL fields render as links, and a section is dropped if all its rows are empty."""
+def _work_order_sections(snapshot: Optional[dict], include_empty: bool = False) -> list[dict]:
+    """Build the grouped work order from a CMS (Wix or Sheets) snapshot. Booleans
+    render Yes/No, URL fields render as links, and a section is dropped if all its
+    rows are empty — unless include_empty=True (used for the editable admin form
+    on job_star, where blank fields still need to render as empty inputs).
+
+    Each row carries a 'key': the canonical (first/primary) field key even when
+    the source entry lists alias keys — that's the name the editable form posts
+    back under, and the single key sheets_client.update_project() writes to."""
     snap = snapshot or {}
     sections = []
     for title, fields in _WORK_ORDER_SECTIONS:
@@ -1063,6 +1085,7 @@ def _work_order_sections(snapshot: Optional[dict]) -> list[dict]:
         has_value = False
         for label, key in fields:
             val, resolved_key = _wo_lookup(snap, key)
+            canonical_key = key[0] if isinstance(key, (list, tuple)) else key
             if isinstance(val, bool):
                 kind, display = "text", ("Yes" if val else "No")
                 has_value = True
@@ -1074,8 +1097,8 @@ def _work_order_sections(snapshot: Optional[dict]) -> list[dict]:
                     kind = "text"
                 if display:
                     has_value = True
-            rows.append({"label": label, "value": display, "kind": kind})
-        if has_value:
+            rows.append({"label": label, "value": display, "kind": kind, "key": canonical_key})
+        if has_value or include_empty:
             sections.append({"title": title, "rows": rows})
     return sections
 
@@ -1123,7 +1146,7 @@ def job_star(job_id: str):
         source = meta.get("source") or ("cms" if meta.get("wix_item_id") else "temp")
     else:
         # Not parsed yet — a CMS job opened straight from the landing list.
-        record = wix_client.get_project(job_id)
+        record = _cms.get_project(job_id)
         if not record:
             abort(404)
         source = "cms"
@@ -1140,13 +1163,140 @@ def job_star(job_id: str):
         }
 
     parsed = job_dir.exists() and _is_parsed(job_dir)
-    wo_sections = _work_order_sections(meta.get("wix_snapshot")) if source == "cms" else None
+    wo_sections = (_work_order_sections(meta.get("wix_snapshot"), include_empty=True)
+                   if source == "cms" else None)
 
     return render_template(
         "job_star.html",
         active_tab="star", job_id=job_id, meta=meta,
         source=source, parsed=parsed, wo_sections=wo_sections,
     )
+
+
+@app.route("/job/<job_id>/star/save", methods=["POST"])
+@_require_auth
+def job_star_save(job_id: str):
+    """Save admin edits to a CMS job's work order — this is what turns
+    job_star.html from a read-only mirror into the actual editable admin form.
+    Collects every posted field into ONE dict and writes it in a single
+    _cms.update_project() call, never one write per field. If the form's
+    action is 'save_and_send', also mints a 180-day magic-link token and
+    emails it to the client (folded into the same update_project() call by
+    setting status alongside the other fields, not a second write)."""
+    action = request.form.get("action", "save")
+    fields = {}
+    for _title, section_fields in _WORK_ORDER_SECTIONS:
+        for _label, key in section_fields:
+            canonical_key = key[0] if isinstance(key, (list, tuple)) else key
+            if canonical_key in request.form:
+                fields[canonical_key] = request.form.get(canonical_key, "")
+
+    record = _cms.get_project(job_id) or {}
+    client_email = (record.get("clientEmail") or "").strip()
+    send_link = False
+    if action == "save_and_send":
+        if not PORTAL_TOKEN_SECRET:
+            flash("PORTAL_TOKEN_SECRET isn't configured — saving without sending a client link.")
+        elif not client_email:
+            flash("This record has no client email on file — saving without sending a client link.")
+        else:
+            fields["status"] = "Pending Client Approval"
+            send_link = True
+
+    if not _cms.update_project(job_id, fields):
+        flash("Could not save the work order — the CMS record wasn't found or the write failed.")
+        return redirect(url_for("job_star", job_id=job_id))
+
+    if send_link:
+        token = portal_tokens.make_token(job_id, PORTAL_TOKEN_SECRET, days_valid=180)
+        base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
+        portal_url = f"{base}/portal/{token}"
+        subject = (f"Your Adicot project specifications: "
+                   f"{record.get('projectAddress') or record.get('title') or job_id}")
+        body = (
+            f"Hi {record.get('clientName') or ''},\n\n"
+            "Please review and complete your project specifications, then sign to authorize "
+            f"Adicot to begin work:\n\n{portal_url}\n\n"
+            "This link is valid for 180 days.\n\nThanks,\nAdicot, Inc."
+        )
+        if email_client.send_email([client_email], subject, body):
+            flash(f"Saved and sent the client portal link to {client_email}.")
+        else:
+            flash("Saved, but the email to the client failed to send — check SMTP settings.")
+    else:
+        flash("Work order saved.")
+
+    return redirect(url_for("job_star", job_id=job_id))
+
+
+def _portal_code_checks(record: dict) -> dict:
+    """Inline code-min badges for the client portal form. Currently just the
+    ASHRAE 90.1 / FBC-EC lighting power density max, keyed by the record's
+    occupancy type — see lpd_max.py."""
+    checks = {}
+    max_lpd = lpd_max.lpd_max_for(record.get("occupancyType") or "")
+    if max_lpd is not None:
+        checks["lightingWattsPerSF"] = {"max": max_lpd, "label": "ASHRAE 90.1 / FBC-EC"}
+    return checks
+
+
+@app.route("/portal/<token>", methods=["GET", "POST"])
+def portal(token: str):
+    """Client-facing work order / proposal / e-signature page — replaces Wix's
+    admin-review.html (client mode) and the Wix Members magic-link login. The
+    signed token IS the authentication; this route is deliberately NOT behind
+    @_require_auth, matching the header comment in templates/portal.html."""
+    job_id = portal_tokens.verify_token(token, PORTAL_TOKEN_SECRET or "")
+    if not job_id:
+        abort(404)
+
+    record = _cms.get_project(job_id)
+    if not record:
+        abort(404)
+
+    already_signed = record.get("status") == "Current Work"
+
+    if request.method == "POST":
+        if already_signed:
+            # Locked — re-render the success state rather than accept a second
+            # submission over a still-valid link.
+            return render_template("portal.html", job=record, code_checks={},
+                                    signed=True, token=token)
+
+        terms_ok = all(request.form.get(f"agree_terms_{i}") for i in (1, 2, 3))
+        signer_name = (request.form.get("signer_name") or "").strip()
+        signer_title = (request.form.get("signer_title") or "").strip()
+        if not (terms_ok and signer_name and signer_title):
+            flash("Please check all three agreement boxes and enter your name and title before signing.")
+            return render_template("portal.html", job=record, code_checks=_portal_code_checks(record),
+                                    signed=False, token=token)
+
+        posted_fields = {}
+        for _title, section_fields in _WORK_ORDER_SECTIONS:
+            for _label, key in section_fields:
+                canonical_key = key[0] if isinstance(key, (list, tuple)) else key
+                if canonical_key in request.form:
+                    posted_fields[canonical_key] = request.form.get(canonical_key, "")
+
+        # Everything the client answered PLUS the signature, in one batched
+        # write — never one call per field.
+        posted_fields.update({
+            "status":            "Current Work",
+            "proposalSigned":    True,
+            "workOrderComplete": True,
+            "reviewComplete":    True,
+            "signedDate":        datetime.datetime.utcnow().isoformat(),
+            "signedBy":          signer_name,
+            "signedTitle":       signer_title,
+            "gcAccepted":        True,
+        })
+        _cms.update_project(job_id, posted_fields)
+        record = _cms.get_project(job_id) or record
+        return render_template("portal.html", job=record, code_checks={}, signed=True, token=token)
+
+    code_checks = {} if already_signed else _portal_code_checks(record)
+    return render_template("portal.html", job=record, code_checks=code_checks,
+                            signed=already_signed, token=token)
 
 
 @app.route("/job/<job_id>/invoice", methods=["GET"])
@@ -1159,7 +1309,7 @@ def job_invoice(job_id: str):
         meta = _load_meta(job_id)
         source = meta.get("source") or ("cms" if meta.get("wix_item_id") else "temp")
     else:
-        record = wix_client.get_project(job_id)
+        record = _cms.get_project(job_id)
         if not record:
             abort(404)
         source = "cms"
@@ -1501,7 +1651,7 @@ def rescrape_html(job_id: str):
         flash("No linked Wix project — can't locate the Drive file to re-scrape.")
         return redirect(url_for("results", job_id=job_id))
 
-    wix_record = wix_client.get_project(wix_item_id)
+    wix_record = _cms.get_project(wix_item_id)
     job_no = (wix_record or {}).get("jobNo", "").strip() if wix_record else ""
     if not job_no:
         flash("Couldn't look up the Wix project's Job No — can't re-scrape from Drive.")
@@ -1863,8 +2013,8 @@ def _debug_equip_status():
 @app.route("/debug/wix-projects")
 @_require_auth
 def _debug_wix_projects():
-    wix_client.invalidate_cache()
-    projects = wix_client.list_projects()
+    _cms.invalidate_cache()
+    projects = _cms.list_projects()
     return jsonify({
         "count": len(projects),
         "credentials_set": {
@@ -1897,7 +2047,7 @@ def api_check_drive():
     if not item_id:
         return jsonify({"status": "no_wix_id"}), 400
 
-    record = wix_client.get_project(item_id)
+    record = _cms.get_project(item_id)
     if not record:
         return jsonify({"status": "wix_lookup_failed", "message": "Couldn't read the Wix project record."})
 
@@ -2220,7 +2370,7 @@ def _attach_drive_files(invoice_id: str, job_no: str, file_ids: list[str],
 @_require_auth
 def api_qbo_prepare(wix_id: str):
     """Billing fields + a suggested customer for one project (modal pre-fill)."""
-    rec = wix_client.get_project(wix_id) or {}
+    rec = _cms.get_project(wix_id) or {}
     client_name = (rec.get("clientName") or "").strip()
     company = (rec.get("clientCompany") or "").strip()
     code = (rec.get("clientCode") or "").strip()
@@ -2338,7 +2488,7 @@ def attach_to_invoice_route(wix_id: str):
         return jsonify({"ok": False, "error": "Select at least one file to attach."}), 400
 
     # Job No drives the Drive 6-Submit lookup; fall back to the live Wix record.
-    job_no = rec.get("job_no") or (wix_client.get_project(wix_id) or {}).get("jobNo", "")
+    job_no = rec.get("job_no") or (_cms.get_project(wix_id) or {}).get("jobNo", "")
     attached, attach_errors = _attach_drive_files(
         rec["invoice_id"], job_no, selected, folder_id=_job_drive_folder_id(wix_id))
 
@@ -2398,7 +2548,7 @@ def job_parse(job_id: str):
     drive_filename: Optional[str] = None
 
     # For a CMS job the address comes from the Wix record; a temp job can type one.
-    wix_record = wix_client.get_project(wix_item_id) if wix_item_id else None
+    wix_record = _cms.get_project(wix_item_id) if wix_item_id else None
     if is_temp:
         project_address = request.form.get("project_address", "").strip()
     else:
@@ -2923,7 +3073,7 @@ def _dm_setup_job(job_id: str):
     job_path = _safe_job_path(job_id)
     if job_path.exists():
         return job_path, _load_meta(job_id), _load_report(job_id), _is_parsed(job_path)
-    record = wix_client.get_project(job_id)
+    record = _cms.get_project(job_id)
     if not record:
         abort(404)
     meta = {

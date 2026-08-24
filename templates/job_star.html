@@ -12,32 +12,35 @@
 
 {% if source == 'cms' %}
   <h2>{{ meta.project_address or meta.project_name or "Work Order" }}</h2>
-  <p class="muted">Work order from the Adicot CMS. Parse the Design Master HTML to unlock the rest of the tabs.</p>
+  <p class="muted">Work order from the Adicot CMS. Edit fields below and Save, or Save &amp; Send to Client to
+    email the client a link where they can fill out the rest and sign. Parse the Design Master HTML below to
+    unlock the rest of the tabs.</p>
 
   <h3>Work Order</h3>
-  {% for sec in wo_sections %}
-    <h4 class="wo-section">{{ sec.title }}</h4>
-    <table class="settings wo-table">
-      <tbody>
+  <form method="post" action="{{ url_for('job_star_save', job_id=job_id) }}" class="job-form" id="wo-form">
+    {% for sec in wo_sections %}
+      <section>
+        <h4 style="margin-top:0;">{{ sec.title }}</h4>
         {% for row in sec.rows %}
-          <tr>
-            <th>{{ row.label }}</th>
-            <td>
-              {% if row.kind == 'link' and row.value %}
-                <a href="{{ row.value }}" target="_blank" rel="noopener">view</a>
-              {% elif row.value %}
-                {{ row.value }}
-              {% else %}
-                <span class="muted">—</span>
-              {% endif %}
-            </td>
-          </tr>
+          <div class="field">
+            <label for="wo-{{ row.key }}">{{ row.label }}</label>
+            <input type="text" name="{{ row.key }}" id="wo-{{ row.key }}" value="{{ row.value }}">
+            {% if row.kind == 'link' and row.value %}
+              <small><a href="{{ row.value }}" target="_blank" rel="noopener">open current link</a></small>
+            {% endif %}
+          </div>
         {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p class="muted">No CMS data on this project record yet.</p>
-  {% endfor %}
+      </section>
+    {% else %}
+      <p class="muted">No CMS data on this project record yet.</p>
+    {% endfor %}
+    {% if wo_sections %}
+      <div class="submit-row">
+        <button type="submit" name="action" value="save" class="btn-secondary">Save</button>
+        <button type="submit" name="action" value="save_and_send" class="primary">Save &amp; Send to Client</button>
+      </div>
+    {% endif %}
+  </form>
 {% else %}
   <h2>Temp Job</h2>
   <p class="muted">A one-off run. Drop in a Design Master HTML export and parse it to unlock the rest of the tabs.</p>

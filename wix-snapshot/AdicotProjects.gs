@@ -2,7 +2,7 @@
 // ADICOT PROJECTS — Google Apps Script
 // =============================================================================
 // Intake-to-proposal pipeline:
-//   Gmail label -> Claude extraction -> Wix CMS + Sheet + Drive folder
+//   Gmail label -> Claude extraction -> Google Sheet ("Projects" tab) + Drive folder
 //   -> static admin review NOTIFICATION email (button to hosted review page)
 //   -> review/edit/approve on adicot.com page -> Gmail draft (questions|proposal)
 //   -> client answers/sign -> status Active.
@@ -23,11 +23,126 @@ const PORTAL_URL    = "https://www.adicotengineeringinc.com/projects";
 const ADMIN_REVIEW_PAGE_URL = "https://www.adicotengineeringinc.com/admin-review"; // hosted review page (token-gated)
 const ADMIN_EMAIL   = "admin@adicot.com";
 const REVIEW_EMAIL  = "agc@adicot.com";
-const SLACK_WEBHOOK = "REDACTED_SLACK_WEBHOOK"; // real value lives in the Apps Script editor — not committed
+const SLACK_WEBHOOK = "REDACTED_SLACK_WEBHOOK"; // rotate the real value in Slack, then set it directly in the Apps Script editor — not committed here
+
+// Base URL for the native Flask client portal (replaces the Wix magic-link portal).
+const PORTAL_BASE_URL = "https://adicot-load-calc-doc.onrender.com";
+// Shared HMAC secret for portal magic-link tokens — same value must be set as the
+// Flask app's PORTAL_TOKEN_SECRET env var. See portal_tokens.py for the algorithm
+// (this file's _makePortalToken() below is the JS-side equivalent).
+const PORTAL_TOKEN_SECRET = PropertiesService.getScriptProperties().getProperty('PORTAL_TOKEN_SECRET');
+
+// ── ASHRAE CLIMATIC DESIGN CONDITIONS (2025) ────────────────────────────────
+// Address -> Maps geocode (built-in, no key) -> nearest WMO station -> 2025 IP
+// design conditions. Returns a small object or null. Used by notifyProjectsSheet().
+const ASHRAE_BASE    = 'https://ashrae-meteo.info/v3.0';
+const ASHRAE_VERSION = '2025';      // 2009/2013/2017/2021/2025 (no 2024)
+const ASHRAE_UNITS   = 'IP';        // 'IP' (°F) or 'SI' (°C)
+
+function getWeatherStationData(address) {
+  if (!address) return null;
+  try {
+    var geo = _ashraeGeocode(address);
+    if (!geo) { _logToSheet('weather: could not geocode ' + address); return null; }
+    var station = _ashraeNearestStation(geo.lat, geo.lng);
+    if (!station) { _logToSheet('weather: no station near ' + address); return null; }
+    var s = _ashraeConditions(station.wmo);
+    if (!s) { _logToSheet('weather: no conditions for WMO ' + station.wmo); return null; }
+    return {
+      station:             s.place || station.place,
+      wmo:                 station.wmo,
+      lat:                 s.lat  || String(geo.lat),
+      elev:                s.elev || '',
+      edition:             ASHRAE_VERSION,
+      units:               ASHRAE_UNITS,
+      heatingDB99:         s['heating_DB_99']          || '',
+      coolingDB1:          s['cooling_DB_MCWB_1_DB']   || '',
+      coolingMCWB1:        s['cooling_DB_MCWB_1_MCWB'] || '',
+      hottestMonth:        s['hottest_month']          || '',
+      hottestMonthDBRange: s['hottest_month_DB_range'] || '',
+    };
+  } catch (err) {
+    _logToSheet('getWeatherStationData ERROR: ' + err.message);
+    return null;
+  }
+}
+
+function _ashraeGeocode(address) {
+  var res = Maps.newGeocoder().geocode(address);
+  if (!res || res.status !== 'OK' || !res.results.length) return null;
+  var loc = res.results[0].geometry.location;
+  return { lat: loc.lat, lng: loc.lng };
+}
+
+function _ashraeNearestStation(lat, lng) {
+  var json = _ashraePost(ASHRAE_BASE + '/request_places.php', {
+    lat: String(lat), long: String(lng), number: '10', ashrae_version: ASHRAE_VERSION
+  });
+  var list = (json && json.meteo_stations) || [];
+  return list.length ? { wmo: list[0].wmo, place: list[0].place } : null;  // nearest first
+}
+
+function _ashraeConditions(wmo) {
+  var json = _ashraePost(ASHRAE_BASE + '/request_meteo_parametres.php', {
+    wmo: wmo, ashrae_version: ASHRAE_VERSION, si_ip: ASHRAE_UNITS
+  });
+  return (json && json.meteo_stations) ? json.meteo_stations[0] : null;
+}
+
+function _ashraePost(url, payload) {
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'post', payload: payload, muteHttpExceptions: true,
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Referer': ASHRAE_BASE + '/',
+               'User-Agent': 'Mozilla/5.0' }
+  });
+  if (resp.getResponseCode() !== 200) return null;
+  return JSON.parse(resp.getContentText().replace(/^﻿/, ''));   // strip UTF-8 BOM
+}
+
+// Manual test — run from the editor, read Logs.
+function testWeatherStation() {
+  Logger.log(JSON.stringify(getWeatherStationData('15825 Green Acres Ave, Wildwood, FL'), null, 2));
+}
 
 const INTAKE_LABEL    = "Projects/x-Estimate/Intake";
 const PROCESSED_LABEL = "Projects/x-Estimate/PSR Ready";
+const PROJECT_LABEL_PREFIX  = 'Projects/x-Estimate/';   // before client signs
+const PROJECT_LABEL_CURRENT = 'Projects/x-Current/';    // after client signs
 
+function _projectLabelName(data) {
+  var raw = String(data && (data.projectFolder || data.projectName || data.jobNo) || '').trim();
+  return raw ? PROJECT_LABEL_PREFIX + raw : '';
+}
+
+function _getOrCreateProjectLabel(data) {
+  var name = _projectLabelName(data);
+  if (!name) return null;
+  var label = GmailApp.getUserLabelByName(name);
+  if (!label) { label = GmailApp.createLabel(name); _logToSheet('Project label created: ' + name); }
+  return label;
+}
+
+function _moveProjectLabelToCurrent(projectFolder) {
+  if (!projectFolder) return;
+  try {
+    var oldName  = PROJECT_LABEL_PREFIX  + projectFolder;
+    var newName  = PROJECT_LABEL_CURRENT + projectFolder;
+    var oldLabel = GmailApp.getUserLabelByName(oldName);
+    if (!oldLabel) { _logToSheet('move label: not found ' + oldName); return; }
+    var newLabel = GmailApp.getUserLabelByName(newName) || GmailApp.createLabel(newName);
+    var threads  = oldLabel.getThreads();
+    for (var i = 0; i < threads.length; i++) { threads[i].addLabel(newLabel); threads[i].removeLabel(oldLabel); }
+    oldLabel.deleteLabel();
+    _logToSheet('Project label moved to x-Current: ' + projectFolder + ' (' + threads.length + ' threads)');
+  } catch (e) { _logToSheet('_moveProjectLabelToCurrent error: ' + e.message); }
+}
+
+function _applyProjectLabel(thread, data, where) {
+  try {
+    var label = _getOrCreateProjectLabel(data);
+    if (label && thread) { thread.addLabel(label); _logToSheet('Project label "' + label.getName() + '" applied to ' + (where || 'thread')); }
+  } catch (err) { _logToSheet('_applyProjectLabel error (' + (where || '') + '): ' + err.message); }
+}
 const MODEL_HAIKU  = "claude-haiku-4-5-20251001";
 const MODEL_SONNET = "claude-sonnet-4-6";
 
@@ -96,6 +211,82 @@ const COL = {
 // which the review page's Velo wrapper writes directly. saveAndApprove below
 // mirrors to the Sheet only the fields that HAVE a column, and never overwrites
 // ROOF_COLOR with a roof-covering value (the old collision bug).
+//
+// The COL map and TAB_NAME ("Adicot Projects") above are the LEGACY partial
+// Wix-mirror tab. They are left untouched and still used by the
+// saveAndApprove/handleClientSigned/handleClientAnswers functions further down
+// this file. notifyProjectsSheet() below does NOT use COL or TAB_NAME — it
+// writes to a separate, new tab (see PROJECTS_TAB_NAME / SHEET_COLUMNS just
+// below) that is the sole new system of record, using the exact same column
+// order as sheets_client.py's SHEET_COLUMNS in the Python app.
+
+// Dedicated tab for the new, clean schema — matches sheets_client.py's
+// GOOGLE_SHEETS_WORKSHEET_NAME default ("Projects"). Created automatically
+// (with a header row) the first time notifyProjectsSheet() runs if it doesn't
+// exist yet.
+const PROJECTS_TAB_NAME = "Projects";
+
+// Exact same order as sheets_client.py's SHEET_COLUMNS — keep the two in sync
+// by hand; there is no shared source file between this repo's Python and this
+// standalone Apps Script project.
+const SHEET_COLUMNS = [
+  "_id", "legacy_wix_id", "createdDate", "status", "workOrderComplete",
+  "proposalSigned", "reviewComplete", "signedDate", "signedBy", "signedTitle",
+  "gcAccepted", "totalCost", "jobNo", "title", "projectAddress",
+  "propertyOwner", "owner", "clientName", "clientCompany", "clientEmail",
+  "clientPhone", "productService", "clientCode", "subClient", "community",
+  "subdivision", "locationDisambig", "lennarJobNo", "engagementDays",
+  "buildingStatus", "sf", "occupants", "orientation", "indoorTemp",
+  "indoorRH", "weatherData", "deckType", "roofCover", "roofColor",
+  "roofRValue", "insulPosition", "suspCeiling", "atticCond", "ceilingHeight",
+  "wallFinish", "wallConstruction", "wallColor", "wallRValue", "wallHeight",
+  "partConstruction", "partRValue", "floorType", "floorRValue", "glassU",
+  "glassSHGC", "glassOperU", "glassOperSHGC", "glassSGDU", "glassSGDSHGC",
+  "glassFrame", "glazingType", "glazingTint", "skylights", "doorType",
+  "occupancyType", "lpdSpaceType", "lightingWattsPerSF", "equipWattsPerSF",
+  "heatGenEquipment", "infiltration", "changeRate", "acNewExisting",
+  "acMounting", "systemType", "hvacType", "heatType", "coolingEff",
+  "heatingEff", "efficiencyTier", "manufacturer", "hasOutsideAir",
+  "hasExhaust", "hasStrip", "heatStripCOP", "hwType", "hwEfficiency",
+  "hwCapacityGal", "description", "projectFolder", "driveFolderUrl",
+  "driveFolderId", "snippetRoofRValue", "snippetWallConstruction",
+  "snippetGlassValues", "snippetCeilingHeight", "snippetLightingWsf",
+  "snippetProjectAddress",
+];
+
+function _getProjectsSheet() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(PROJECTS_TAB_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(PROJECTS_TAB_NAME);
+    sheet.getRange(1, 1, 1, SHEET_COLUMNS.length).setValues([SHEET_COLUMNS]);
+  }
+  return sheet;
+}
+
+// ── PORTAL MAGIC-LINK TOKENS ───────────────────────────────────────────────────
+// JS-side mirror of portal_tokens.py's algorithm — see that file's docstring for
+// why this is a hand-rolled HMAC scheme rather than itsdangerous (a Python-only
+// format Apps Script can't mint). Token = base64url(payload) + "." +
+// base64url(HMAC-SHA256(secret, base64url(payload))), payload = "id.expiryUnixTs".
+
+function _b64urlEncodeBytes(bytes) {
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+}
+
+function _makePortalToken(id, daysValid) {
+  var expiryTs = Math.floor(Date.now() / 1000) + (daysValid || 180) * 86400;
+  var payload = id + '.' + expiryTs;
+  var payloadB64 = _b64urlEncodeBytes(Utilities.newBlob(payload).getBytes());
+  var sigBytes = Utilities.computeHmacSha256Signature(payloadB64, PORTAL_TOKEN_SECRET);
+  var sigB64 = _b64urlEncodeBytes(sigBytes);
+  return payloadB64 + '.' + sigB64;
+}
+
+function _generateRowId() {
+  // Short, reasonably-unique id — Apps Script equivalent of Python's secrets.token_hex(6).
+  return Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+}
 
 
 // ── LPD LOOKUP — 2024 IECC C405.3.2(1) ───────────────────────────────────────
@@ -157,119 +348,11 @@ function _getLpdSpaceType(occupancyType) {
 }
 
 
-// ── WOOLF / LENNAR REPEAT-PROJECT DEFAULTS ────────────────────────────────────
-// Woolf Engineering sends Lennar repeat buildings (4/12/16/30-unit condos).
-// The building geometry is fixed; only community (-> fenestration), gas (-> water
-// heater), location, and orientation vary. These two tables mirror the Wix public
-// files communityFenestration.js and waterHeaterLookup.js. Apps Script cannot
-// import Wix public modules, so the data is duplicated here.
-// ** Keep these in sync with the Wix public files when communities are added. **
-
-const WOOLF_CLIENT_CODE = 'WLF';
-
-var _GCI_SPARTA = {
-  fixed: { u: 1.05, shgc: 0.37 },
-  sh:    { u: 1.06, shgc: 0.30 },
-  sgd:   { u: 1.07, shgc: 0.31 },
-};
-
-const COMMUNITY_FENESTRATION_GS = {
-  'Babcock National':    _GCI_SPARTA,
-  'Calusa Country Club': _GCI_SPARTA,
-  'Heritage Landing':    _GCI_SPARTA,
-  'Legends Cove':        _GCI_SPARTA,
-  'Wellen Park Golf':    _GCI_SPARTA,
-  'Ave Maria Coach': {
-    fixed: { u: 0.59, shgc: 0.39 },
-    sh:    { u: 0.70, shgc: 0.36 },
-    sgd:   { u: 1.06, shgc: 0.34 },
-  },
-  'Sunwalk': {
-    fixed: { u: 1.02, shgc: 0.29 },
-    sh:    { u: 1.09, shgc: 0.29 },
-    sgd:   { u: 1.05, shgc: 0.27 },
-  },
-};
-
-// ESR short names -> canonical community key.
-const COMMUNITY_ALIASES_GS = {
-  'babcock': 'Babcock National',
-};
-
-const WATER_HEATER_GS = {
-  electric: { fuel: 'Electric',     type: 'Storage tank',                       uef: 0.92, label: '50 gal electric storage water heater, 0.92 UEF' },
-  gas:      { fuel: 'Natural gas',  type: 'Instantaneous (condensing tankless)', uef: 0.98, label: 'Rinnai RX199iN gas instantaneous water heater, 0.98 UEF' },
-};
-
-function _getCommunityFenestration(community) {
-  if (!community) return null;
-  var raw = String(community).trim();
-  if (!raw) return null;
-  var key = Object.keys(COMMUNITY_FENESTRATION_GS).filter(function(k) {
-    return k.toLowerCase() === raw.toLowerCase();
-  })[0];
-  if (!key) {
-    var alias = COMMUNITY_ALIASES_GS[raw.toLowerCase()];
-    if (alias) key = alias;
-  }
-  if (!key) return null;
-  var spec = COMMUNITY_FENESTRATION_GS[key];
-  return { matchedKey: key, fixed: spec.fixed, sh: spec.sh, sgd: spec.sgd };
-}
-
-function _getWaterHeater(hasGas) {
-  var yes = hasGas === true ||
-    (typeof hasGas === 'string' && ['yes','y','true','gas'].indexOf(String(hasGas).trim().toLowerCase()) !== -1);
-  return yes ? WATER_HEATER_GS.gas : WATER_HEATER_GS.electric;
-}
-
-// Applies Woolf community/gas lookups to the merged record IN PLACE.
-// INPUT PRECEDENCE: only fills values the client/drawings did NOT provide.
-// All filled values are assumptions to be verified on the admin review page.
-function _applyWoolfDefaults(merged) {
-  if (!merged || (merged.clientCode || '').trim() !== WOOLF_CLIENT_CODE) return merged;
-
-  function _empty(v) { return v === null || v === undefined || v === '' || v === 0; }
-
-  // Woolf buildings are condos -> Multiple-family LPD type.
-  if (_empty(merged.lpdSpaceType)) merged.lpdSpaceType = 'Multiple-family';
-
-  // Community -> fenestration (Fixed glazing governs the single glassU/glassSHGC).
-  var fen = _getCommunityFenestration(merged.community);
-  if (fen) {
-    if (_empty(merged.glassU))    merged.glassU    = fen.fixed.u;
-    if (_empty(merged.glassSHGC)) merged.glassSHGC = fen.fixed.shgc;
-    merged.community = fen.matchedKey; // normalize to canonical name
-  }
-
-  // Gas flag -> water heater (feeds heatGenEquipment note + EC).
-  var wh = _getWaterHeater(merged.hasGas);
-  if (_empty(merged.heatGenEquipment)) merged.heatGenEquipment = wh.label;
-
-  // Repeat client: no online sign loop; contract PDF + invoice at approve.
-  merged.repeatClient = true;
-
-  return merged;
-}
-
-
 // ── PROJECT NAMING CONVENTION ─────────────────────────────────────────────────
 
 function buildProjectFolderName(clientCode, subClient, locationDisambig) {
   if (!clientCode) return '';
   var name = clientCode.trim();
-
-  // ── Woolf (Lennar repeat buildings): [unit] Unit-COMM-Bldg [#] ──────────
-  // subClient = unit type ("16 Unit"); locationDisambig = building # ("3200").
-  // Parent nesting (1-job/woolf-[unit] unit/) is handled in createProjectFolder.
-  if (name === WOOLF_CLIENT_CODE) {
-    var unit = (subClient || '').trim();
-    var bldg = (locationDisambig || '').trim();
-    var wname = unit ? unit : 'Unit';
-    wname += '-COMM';
-    if (bldg) wname += '-Bldg ' + bldg;
-    return wname;
-  }
 
   if (name === 'Crown') {
     if (locationDisambig && locationDisambig.trim()) name += '-' + locationDisambig.trim();
@@ -366,15 +449,7 @@ function createProjectFolder(clientCode, subClient, locationDisambig) {
   const jobFolderId = PropertiesService.getScriptProperties().getProperty('JOB_FOLDER_ID');
   if (!jobFolderId) throw new Error('JOB_FOLDER_ID not set — run setupJobFolder() first');
 
-  // Woolf nests under 1-job/woolf-[unit] unit/ instead of 1-job/WLF/
-  var clientFolder;
-  if (clientCode.trim() === WOOLF_CLIENT_CODE) {
-    var unitLabel = (subClient || '').trim().toLowerCase();   // "16 unit"
-    var woolfParentName = 'woolf-' + (unitLabel || 'unit');   // "woolf-16 unit"
-    clientFolder = _findOrCreateFolder(woolfParentName, jobFolderId);
-  } else {
-    clientFolder = _findOrCreateFolder(clientCode.trim(), jobFolderId);
-  }
+  const clientFolder = _findOrCreateFolder(clientCode.trim(), jobFolderId);
   const projectFolder = _findOrCreateFolder(folderName, clientFolder.id);
 
   for (var i = 0; i < PROJECT_SUBFOLDERS.length; i++) {
@@ -405,6 +480,12 @@ function _sendAdminReviewEmail(data, projectId) {
     name:     'Adicot Intake Pipeline',
   });
   _logToSheet('Admin review notification email sent for ' + jobNo + ' to ' + REVIEW_EMAIL);
+  // Group the review notification we just sent under the project label.
+  try {
+    Utilities.sleep(1000);  // let the sent copy index before we search
+    var _rev = GmailApp.search('in:sent newer_than:1d subject:"' + jobNo + '"', 0, 1);
+    if (_rev.length) _applyProjectLabel(_rev[0], data, 'admin review notification');
+  } catch (e) { _logToSheet('label admin notification error: ' + e.message); }
 }
 
 function _adminNotifyPlain(data, reviewUrl) {
@@ -517,7 +598,7 @@ function doGet(e) {
 }
 
 
-// ── STEP 2 PIPELINE: GMAIL → CLAUDE → WIX CMS ────────────────────────────────
+// ── STEP 2 PIPELINE: GMAIL → CLAUDE → GOOGLE SHEET ───────────────────────────
 
 function processIntakeEmails() {
   try {
@@ -531,6 +612,7 @@ function processIntakeEmails() {
     var threads = intakeLabel.getThreads(0, 20);
     if (!threads.length) return;
     for (var t = 0; t < threads.length; t++) {
+      if (_isNoProject(threads[t])) continue;
       try {
         _processIntakeThread(threads[t], processedLabel, intakeLabel);
       } catch (err) {
@@ -573,10 +655,6 @@ function _processIntakeThread(thread, processedLabel, intakeLabel) {
     merged.subClient = _deriveSubClient(merged.projectName || '');
   }
 
-  // Woolf repeat-project defaults: community -> fenestration, gas -> water heater,
-  // condo lpdSpaceType, repeatClient flag. Fills only what the client didn't give.
-  _applyWoolfDefaults(merged);
-
   var projectFolder = buildProjectFolderName(
     merged.clientCode || '',
     merged.subClient  || '',
@@ -612,6 +690,12 @@ function _processIntakeThread(thread, processedLabel, intakeLabel) {
     _logToSheet('Project folder created: ' + projectFolder + ' (' + driveFolderId + ')');
   } catch(e3) {
     _logToSheet('createProjectFolder error: ' + e3.message);
+  }
+
+  // Save the client's intake attachments into 1-From Client right away.
+  if (driveFolderId) {
+    try { _fileThreadClientAttachments(thread, driveFolderId); }
+    catch (e) { _logToSheet('intake attach filing error: ' + e.message); }
   }
 
   var lightingWattsPerSF = merged.lightingWattsPerSF || null;
@@ -711,12 +795,11 @@ function _processIntakeThread(thread, processedLabel, intakeLabel) {
     }
   }
 
-  try { appendProjectRow({ ...data, totalCost: 0 }); } catch(e2) { _logToSheet('appendProjectRow error: ' + e2.message); }
-
-  var wixResult = notifyWix(data, null);
-  var projectId = wixResult && wixResult.projectId ? wixResult.projectId : '';
+  var sheetResult = notifyProjectsSheet({ ...data, totalCost: 0 }, null);
+  var projectId = sheetResult && sheetResult.id ? sheetResult.id : '';
 
   _swapLabel(thread, intakeLabel, processedLabel);
+  _applyProjectLabel(thread, data, 'intake thread (incoming client email)');   // ADD
 
   var attachCount = attachmentResults.extractions.length;
   var snippetCount = Object.values(snippets).filter(Boolean).length;
@@ -783,6 +866,7 @@ function _processAttachments(message) {
 
       var extracted = _extractFromAttachment(b64, mediaType, name);
       if (extracted) {
+        extracted._filename = name;
         result.extractions.push(extracted);
         _logToSheet('Extracted from ' + name + ': drawingType=' + (extracted._drawingType || 'unknown'));
       }
@@ -829,17 +913,6 @@ function _extractFromAttachment(b64, mediaType, filename) {
       '  - Project name, property owner name, project address (street, city, state, zip)',
       '  - Architect/engineer firm name, contact name, phone, email',
       '  - Sheet scale, drawing date',
-      '',
-      'WOOLF ENGINEERING / LENNAR ESR FORM (Engineering Services Request):',
-      '  - If this is a Woolf Engineering ESR (header "ENGINEERING SERVICES REQUEST", builder "LENNAR HOMES"),',
-      '    the CLIENT is Woolf Engineering (clientCode "WLF"), NOT Lennar and NOT the property owner.',
-      '  - subClient: the unit count as "[N] Unit" from MODEL NAME / PLAN NAME (e.g. "2-story / 16 PLEX" -> "16 Unit").',
-      '  - locationDisambig: the LOT/BUILDING # value (e.g. "3200").',
-      '  - community: the COMMUNITY field value (e.g. "Babcock").',
-      '  - subdivision: the SUBDIVISION field value (e.g. "Webbs Reserve 2 story").',
-      '  - hasGas: read the GAS check boxes — true if YES is checked, false if NO is checked.',
-      '  - county: the COUNTY field. address: the ADDRESS field (project site address).',
-      '  - These are condos — occupancyType "Multifamily condo".',
       '',
       'FLOOR PLAN TITLE / NOTES (text near the floor plan drawing):',
       '  - Total conditioned area in SF — look for "SF", "SQ FT", "LEASE", "AREA" near the plan title',
@@ -932,7 +1005,6 @@ function _extractFromAttachment(b64, mediaType, filename) {
       '  "locationDisambig": string,',
       '  "community": string,',
       '  "subdivision": string,',
-      '  "hasGas": boolean,',
       '  "projectName": string,',
       '  "projectAddress": string,',
       '  "state": string,',
@@ -973,7 +1045,6 @@ function _extractFromAttachment(b64, mediaType, filename) {
       '',
       'Use null for any field not found or not inferable. Never return 0 for sf or occupants — use null if unknown.',
       'For lightingWattsPerSF: only return a value if explicitly stated or directly calculable from the drawings. Return null otherwise.',
-      'For hasGas: return true/false only if the ESR GAS field is clearly checked; otherwise null.',
     ].join('\n');
 
     var messageContent = [
@@ -1073,7 +1144,7 @@ function _mergeExtractions(emailData, pdfExtractions) {
     'projectAddress','propertyOwner','state','county','clientFirst','clientLast',
     'clientPhone','clientEmail','clientCompany','productService'];
 
-  var TECHNICAL_FIELDS = ['sf','occupancyType','buildingStatus','occupants','orientation','hasGas',
+  var TECHNICAL_FIELDS = ['sf','occupancyType','buildingStatus','occupants','orientation',
     'ceilingHeight','deckType','roofCover','insulPosition','suspCeiling','atticCond',
     'roofRValue','roofColor','wallConstruction','wallFinish','wallColor','wallRValue',
     'wallHeight','doorType','glassU','glassSHGC','lightingWattsPerSF','heatGenEquipment',
@@ -1095,12 +1166,6 @@ function _mergeExtractions(emailData, pdfExtractions) {
 
     for (var t = 0; t < TECHNICAL_FIELDS.length; t++) {
       var tf = TECHNICAL_FIELDS[t];
-      // hasGas is boolean — treat only null/undefined as empty (false is a real value).
-      if (tf === 'hasGas') {
-        if ((merged.hasGas === null || merged.hasGas === undefined) &&
-            (pdf.hasGas === true || pdf.hasGas === false)) merged.hasGas = pdf.hasGas;
-        continue;
-      }
       if (_empty(merged[tf]) && !_empty(pdf[tf])) merged[tf] = pdf[tf];
     }
 
@@ -1136,12 +1201,6 @@ function _extractWithClaude(subject, fromEmail, body) {
       _clientCodesPromptBlock(),
       'IMPORTANT: clientCode is the CLIENT FIRM that sends Adicot work (architect, builder, design firm) — NOT the property owner, NOT the end-occupant, NOT a product manufacturer. If you must propose a new code, also set "_isNewClient": true and give "_proposedClientName" and "_proposedAliases".',
       '',
-      'WOOLF / LENNAR: If the email or a Woolf "ENGINEERING SERVICES REQUEST" form mentions Woolf Engineering with builder Lennar Homes, set clientCode "WLF". Pull these if present:',
-      '  - subClient: unit count as "[N] Unit" (from "16 PLEX" / "2-story 16-unit" etc. -> "16 Unit").',
-      '  - locationDisambig: the LOT/BUILDING # (e.g. "3200").',
-      '  - community: the community name (e.g. "Babcock"). subdivision: the subdivision (e.g. "Webbs Reserve 2 story").',
-      '  - hasGas: true if gas service, false if no gas, null if unstated. These are condos (occupancyType "Multifamily condo").',
-      '',
       'Return a JSON object with these fields (use null for anything not mentioned):',
       '{',
       '  "clientCode": string,',
@@ -1152,7 +1211,6 @@ function _extractWithClaude(subject, fromEmail, body) {
       '  "locationDisambig": string,',
       '  "community": string,',
       '  "subdivision": string,',
-      '  "hasGas": boolean,',
       '  "projectName": string,',
       '  "projectAddress": string,',
       '  "state": string,',
@@ -1582,17 +1640,27 @@ function createClientDraft(projectData, adminFields, clientFieldKeys) {
     var emailHtml  = _buildClientSummaryEmail(merged, firstName, jobNum, projName, portalLink, true, clientFieldKeys || []);
     var plain      = _clientSummaryPlain(firstName, projName, portalLink, true);
     var subject    = jobNum + ' · ' + projName + ' — your proposal';
-    GmailApp.createDraft(clientEmail, subject, plain, {
+    var draft = GmailApp.createDraft(clientEmail, subject, plain, {
       htmlBody: emailHtml,
       name:     'Adrienne Gould-Choquette, PE',
       replyTo:  Session.getActiveUser().getEmail(),
     });
+    _applyProjectLabel(draft.getMessage().getThread(), merged, 'proposal review draft');   // ADD
     _updateSheetStatus(merged.jobNo, 'Draft Created');
     return { status: 'ok' };
   } catch (err) {
     _logToSheet('createClientDraft ERROR: ' + err.message);
     return { status: 'error', message: err.toString() };
   }
+}
+
+function _buildAdminReviewLink(data) {
+  var id    = data._id   || data.projectId || '';
+  var jobNo = data.jobNo || data.jobNumber || '';
+  var base  = ADMIN_REVIEW_PAGE_URL + '?mode=admin';
+  if (id)         base += '&id='    + encodeURIComponent(id);
+  else if (jobNo) base += '&jobNo=' + encodeURIComponent(jobNo);
+  return base;
 }
 
 function _buildClientPageLink(data, hasQuote) {
@@ -1690,11 +1758,12 @@ function createQuestionsEmailDraft(projectData, adminFields, clientFieldKeys) {
     var pageLink  = _buildClientPageLink(p, false); // questions mode (no quote)
     var html      = _buildClientSummaryEmail(p, firstName, jobNum, projName, pageLink, false, clientFieldKeys || []);
     var plain     = _clientSummaryPlain(firstName, projName, pageLink, false);
-    GmailApp.createDraft(p.clientEmail, subject, plain, {
+    var draft = GmailApp.createDraft(p.clientEmail, subject, plain, {
       htmlBody: html,
       name:     'Adrienne Gould-Choquette, PE',
       replyTo:  Session.getActiveUser().getEmail(),
     });
+    _applyProjectLabel(draft.getMessage().getThread(), p, 'questions review draft');   // ADD
     _updateSheetStatus(jobNum, 'Questions Draft Created');
     _logToSheet('createQuestionsEmailDraft (static): draft created for ' + p.clientEmail);
     return { status: 'ok' };
@@ -1751,7 +1820,6 @@ function _buildClientSummaryEmail(p, firstName, jobNum, projName, pageLink, hasQ
     ['heatGenEquipment','Heat-gen equipment'],
     ['acNewExisting','AC new / existing'],
     ['acMounting','AC mounting'],
-    ['hvacType','System type'],
     ['heatType','Heat type'],
     ['lightingWattsPerSF','Lighting W/SF'],
     ['ceilingHeight','Ceiling height']
@@ -1819,11 +1887,12 @@ function _buildClientSummaryEmail(p, firstName, jobNum, projName, pageLink, hasQ
   '<p style="margin:0 0 16px;font-size:14px;color:#444441;line-height:1.6;">'+intro+'</p>' +
   feeBlock +
   missingSection +
-  confirmedSection +
   '</td></tr>' +
 
   '<tr><td style="padding:22px 24px 24px;">' +
   '<a href="'+pageLink+'" style="display:inline-block;background:#E8740A;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:13px 28px;border-radius:8px;">'+btnLabel+'</a>' +
+        '<p style="margin:14px 0 0;font-size:12px;color:#444441;line-height:1.6;">Button not working? Tap or paste this link:<br>' +
+        '<a href="'+pageLink+'" style="color:#E8740A;text-decoration:underline;word-break:break-all;">'+pageLink+'</a></p>' +
   '<p style="margin:12px 0 0;font-size:11px;color:#9A9A9A;line-height:1.6;">You can review everything, see the source snippets from your drawings, and make corrections right on the page.</p>' +
   '</td></tr>' +
 
@@ -1838,7 +1907,7 @@ function _esc(s)     { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'
 function _escAttr(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 
-// ── APPEND A NEW PROJECT ROW ──────────────────────────────────────────────────
+// ── APPEND A NEW PROJECT ROW (legacy — no longer called; see notifyProjectsSheet) ─
 
 function appendProjectRow(data) {
   var sheet    = _getSheet();
@@ -1955,83 +2024,148 @@ function _addClientCode(clientCode, clientName, aliases) {
 }
 
 
-// ── NOTIFY WIX ────────────────────────────────────────────────────────────────
+// ── NOTIFY PROJECTS SHEET ───────────────────────────────────────────────────
+// Replaces notifyWix(): writes ONE row to the new "Projects" tab (single
+// setValues call) instead of POSTing to Wix, mints a magic-link token, and
+// returns the client-facing portal URL for the intake-notification email. If
+// sheetRowIndex is already known (an existing row being re-notified), pass it
+// in to update that row instead of appending a new one — otherwise leave it
+// null/undefined to always append.
 
-function notifyWix(data, sheetRowIndex) {
+function notifyProjectsSheet(data, sheetRowIndex) {
   try {
-    var response = UrlFetchApp.fetch(
-      "https://www.adicotengineeringinc.com/_functions/createProjectAndMember",
-      {
-        method: "post", contentType: "application/json",
-        payload: JSON.stringify({
-          clientEmail:      data.clientEmail    || "",
-          clientFirstName:  data.clientFirst    || "",
-          clientLastName:   data.clientLast     || "",
-          clientPhone:      data.clientPhone    || "",
-          clientCompany:    data.clientCompany  || "",
-          projectName:      data.projectName    || "",
-          projectFolder:    data.projectFolder  || "",
-          clientCode:       data.clientCode     || "",
-          subClient:        data.subClient      || "",
-          locationDisambig: data.locationDisambig || "",
-          community:        data.community      || "",
-          subdivision:      data.subdivision    || "",
-          repeatClient:     data.repeatClient   || false,
-          lpdSpaceType:     data.lpdSpaceType   || "",
-          projectAddress:   data.projectAddress || "",
-          propertyOwner:    data.propertyOwner  || "",
-          jobNo:            data.jobNo          || "",
-          totalCost:        data.totalCost      || 0,
-          sf:               data.sf             || 0,
-          productService:   data.productService || "",
-          status:           "Pending Review",
-          description:      data.description   || "",
-          sheetRowIndex:    sheetRowIndex,
-          buildingStatus:   data.buildingStatus    || "",
-          occupancyType:    data.occupancyType     || "",
-          orientation:      data.orientation       || "",
-          occupants:        data.occupants         || 0,
-          roofRValue:       data.roofRValue        || "",
-          roofColor:        data.roofColor         || "",
-          roofCover:        data.roofCover         || "",
-          deckType:         data.deckType          || "",
-          insulPosition:    data.insulPosition     || "",
-          suspCeiling:      data.suspCeiling       || "",
-          atticCond:        data.atticCond         || "",
-          wallConstruction: data.wallConstruction  || "",
-          wallFinish:       data.wallFinish        || "",
-          wallRValue:       data.wallRValue        || "",
-          wallHeight:       data.wallHeight        || "",
-          glassU:           data.glassU            || 0,
-          glassSHGC:        data.glassSHGC         || 0,
-          doorType:         data.doorType          || "",
-          ceilingHeight:    data.ceilingHeight     || "",
-          lightingWattsPerSF: data.lightingWattsPerSF || 0,
-          heatGenEquipment: data.heatGenEquipment  || "",
-          driveFolderId:    data.driveFolderId     || "",
-          driveFolderUrl:   data.driveFolderUrl    || "",
-          snippetMap:              data.snippetMap              || "",
-          snippetRoofRValue:       data.snippetRoofRValue       || "",
-          snippetWallConstruction: data.snippetWallConstruction || "",
-          snippetGlassValues:      data.snippetGlassValues      || "",
-          snippetCeilingHeight:    data.snippetCeilingHeight     || "",
-          snippetLightingWsf:      data.snippetLightingWsf      || "",
-          snippetProjectAddress:   data.snippetProjectAddress    || "",
-        }),
-        muteHttpExceptions: true,
-      }
-    );
-    var result = JSON.parse(response.getContentText());
-    if (result.projectId) _logToSheet("Wix project created: " + result.projectId);
-    return result;
-  } catch (err) { _logToSheet("notifyWix ERROR: " + err.message); return null; }
+    // ASHRAE 2025 outdoor design conditions for the proposal Specification block.
+    if (!data.weatherData && data.projectAddress) {
+      var _wx = getWeatherStationData(data.projectAddress);
+      data.weatherData = _wx ? JSON.stringify(_wx) : '';
+    }
+
+    var sheet = _getProjectsSheet();
+    var id = data._id || _generateRowId();
+
+    var fields = {
+      _id: id,
+      legacy_wix_id: "",   // brand-new intake, no Wix predecessor
+      createdDate: new Date().toISOString(),
+      status: "Pending Review",
+
+      title: data.projectFolder || data.projectName || "",
+      propertyOwner: data.propertyOwner || "",
+      owner: data.owner || "",
+      projectAddress: data.projectAddress || "",
+      clientName: ((data.clientFirst || "") + " " + (data.clientLast || "")).trim(),
+      clientCompany: data.clientCompany || "",
+      clientEmail: data.clientEmail || "",
+      clientPhone: data.clientPhone || "",
+      productService: data.productService || "",
+      clientCode: data.clientCode || "",
+      subClient: data.subClient || "",
+      community: data.community || "",
+      subdivision: data.subdivision || "",
+      locationDisambig: data.locationDisambig || "",
+      jobNo: data.jobNo || "",
+      totalCost: data.totalCost || 0,
+      sf: data.sf || 0,
+      description: data.description || "",
+      projectFolder: data.projectFolder || "",
+      weatherData: data.weatherData || "",
+
+      buildingStatus: data.buildingStatus || "",
+      occupancyType: data.occupancyType || "",
+      lpdSpaceType: data.lpdSpaceType || "",
+      orientation: data.orientation || "",
+      occupants: data.occupants || 0,
+
+      roofRValue: data.roofRValue || "",
+      roofColor: data.roofColor || "",
+      roofCover: data.roofCover || "",
+      deckType: data.deckType || "",
+      insulPosition: data.insulPosition || "",
+      suspCeiling: data.suspCeiling || "",
+      atticCond: data.atticCond || "",
+      ceilingHeight: data.ceilingHeight || "",
+
+      wallConstruction: data.wallConstruction || "",
+      wallFinish: data.wallFinish || "",
+      wallColor: data.wallColor || "",
+      wallRValue: data.wallRValue || "",
+      wallHeight: data.wallHeight || "",
+      partConstruction: data.partConstruction || "",
+      partRValue: data.partRValue || "",
+      floorType: data.floorType || "",
+      floorRValue: data.floorRValue || "",
+      glassU: data.glassU || 0,
+      glassSHGC: data.glassSHGC || 0,
+      glassOperU: data.glassOperU || "",
+      glassOperSHGC: data.glassOperSHGC || "",
+      glassSGDU: data.glassSGDU || "",
+      glassSGDSHGC: data.glassSGDSHGC || "",
+      glassFrame: data.glassFrame || "",
+      glazingType: data.glazingType || "",
+      glazingTint: data.glazingTint || "",
+      skylights: data.skylights || "",
+      doorType: data.doorType || "",
+
+      lightingWattsPerSF: data.lightingWattsPerSF || 0,
+      equipWattsPerSF: data.equipWattsPerSF || "",
+      heatGenEquipment: data.heatGenEquipment || "",
+      infiltration: data.infiltration || "",
+      changeRate: data.changeRate || "",
+
+      acNewExisting: data.acNewExisting || "",
+      acMounting: data.acMounting || "",
+      systemType: data.systemType || "",
+      hvacType: data.hvacType || "",
+      heatType: data.heatType || "",
+      coolingEff: data.coolingEff || "",
+      heatingEff: data.heatingEff || "",
+      manufacturer: data.manufacturer || "",
+      hasOutsideAir: data.hasOutsideAir || "",
+      hasExhaust: data.hasExhaust || "",
+      hasStrip: data.hasStrip || "",
+      heatStripCOP: data.heatStripCOP || "",
+
+      hwType: data.hwType || "",
+      hwEfficiency: data.hwEfficiency || "",
+      hwCapacityGal: data.hwCapacityGal || "",
+
+      driveFolderId: data.driveFolderId || "",
+      driveFolderUrl: data.driveFolderUrl || "",
+      snippetRoofRValue: data.snippetRoofRValue || "",
+      snippetWallConstruction: data.snippetWallConstruction || "",
+      snippetGlassValues: data.snippetGlassValues || "",
+      snippetCeilingHeight: data.snippetCeilingHeight || "",
+      snippetLightingWsf: data.snippetLightingWsf || "",
+      snippetProjectAddress: data.snippetProjectAddress || "",
+    };
+
+    // Single row array, in SHEET_COLUMNS order — matches sheets_client.py's
+    // _dict_to_row() exactly, so either side can read what the other wrote.
+    var row = SHEET_COLUMNS.map(function (key) {
+      return (key in fields) ? fields[key] : "";
+    });
+
+    var targetRow = sheetRowIndex || (sheet.getLastRow() + 1);
+    sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
+    SpreadsheetApp.flush();
+
+    var token = _makePortalToken(id, 180);
+    var portalUrl = PORTAL_BASE_URL + "/portal/" + token;
+    _logToSheet("Sheet row " + (sheetRowIndex ? "updated" : "created") +
+                " at row " + targetRow + " (id " + id + "); portal link minted.");
+    return { ok: true, id: id, sheetRowIndex: targetRow, portalUrl: portalUrl };
+  } catch (err) {
+    _logToSheet("notifyProjectsSheet ERROR: " + err.message);
+    return null;
+  }
 }
 
 
 // ── saveAndApprove (called by the admin review page's Velo wrapper) ──────────
-// Mirrors edited fields to the Sheet (only fields that HAVE a column; the CMS
-// is written by the Velo wrapper and holds the complete record), then creates
-// the Gmail draft (questions | proposal). Nothing sends automatically.
+// Mirrors edited fields to the legacy Sheet mirror (only fields that HAVE a
+// column; the CMS is written by the Velo wrapper and holds the complete
+// record), then creates the Gmail draft (questions | proposal). Nothing sends
+// automatically.
 
 function _handleSaveAndApprove(payload) {
   try {
@@ -2081,7 +2215,7 @@ function _handleSaveAndApprove(payload) {
       glassValues:      (payload.glassU && payload.glassSHGC) ? ('U = ' + payload.glassU + ' · SHGC = ' + payload.glassSHGC) : '',
     };
 
-    // ── Mirror to the Sheet (only columns that exist) ──
+    // ── Mirror to the legacy Sheet (only columns that exist) ──
     try {
       var sheet = _getSheet();
       var rows  = sheet.getDataRange().getValues();
@@ -2114,7 +2248,7 @@ function _handleSaveAndApprove(payload) {
           put(COL.DOOR_TYPE,       d.doorType);
           put(COL.PRODUCT_SERVICE, d.productService);
           put(COL.TOTAL_COST,      d.totalCost);
-          // roofCover, atticCond, engagementDays have NO Sheet column — CMS only.
+          // roofCover, atticCond, engagementDays have NO legacy Sheet column — CMS only.
           sheet.getRange(r, COL.STATUS).setValue('Pending Client Approval');
           SpreadsheetApp.flush();
           break;
@@ -2136,9 +2270,10 @@ function _handleSaveAndApprove(payload) {
         _logToSheet('getProject status: ' + wixResp.getResponseCode());
         _logToSheet('getProject body: ' + wixResp.getContentText().substring(0, 200));
         var wixJson = JSON.parse(wixResp.getContentText());
-        d.clientEmail = wixJson.clientEmail || '';
-        d.clientName  = wixJson.clientName  || d.clientName;
-        d._id         = wixJson._id         || d._id;
+        var proj = wixJson.project || wixJson;
+        d.clientEmail = proj.clientEmail || '';
+        d.clientName  = proj.clientName  || ((proj.clientFirstName||'')+' '+(proj.clientLastName||'')).trim() || d.clientName;
+        d._id         = proj._id         || d._id;
         _logToSheet('resolved clientEmail from CMS: ' + (d.clientEmail || 'still missing'));
       } catch(fetchErr) {
         _logToSheet('clientEmail CMS lookup failed: ' + fetchErr.message);
@@ -2202,6 +2337,9 @@ function handleClientSigned(payload) {
       sheet.getRange(row, COL.STATUS).setValue('Current Work');
       SpreadsheetApp.flush();
     }
+        var _projFolder = (row !== -1) ? String(sheet.getRange(row, COL.PROJECT_NAME).getValue()).trim() : jobNo;
+    _moveProjectLabelToCurrent(_projFolder);   // ADD
+
     postToSlack(null, [
       { type: 'header', text: { type: 'plain_text', text: 'Client signed — ' + jobNo } },
       { type: 'section', fields: [
@@ -2292,4 +2430,88 @@ function _logToSheet(message) {
     if (!log) log = ss.insertSheet("Script Log");
     log.appendRow([new Date().toISOString(), message]);
   } catch (_) {}
+}
+
+// One-time: fill weatherData on existing Projects from the Sheet's addresses.
+// Batched + resumable. Run it; if the log says "RUN AGAIN", run it again until
+// it logs "BACKFILL COMPLETE".
+function backfillWeatherData() {
+  var listResp = UrlFetchApp.fetch(
+    'https://www.adicotengineeringinc.com/_functions/projectsNeedingWeather',
+    { muteHttpExceptions: true });
+  var list = JSON.parse(listResp.getContentText());
+  if (list.status !== 'ok') { Logger.log('list error: ' + listResp.getContentText().slice(0, 300)); return; }
+  var items = list.items || [];
+  Logger.log('Projects still needing weather: ' + list.total + ' (processing ' + items.length + ' this run)');
+
+  var done = 0, noAddr = 0, noStation = 0, failed = 0;
+  for (var k = 0; k < items.length; k++) {
+    var it = items[k];
+    if (!it.address || it.address.trim().length < 4) { noAddr++; continue; }
+    var w = getWeatherStationData(it.address);
+    if (!w) { noStation++; _logToSheet('backfill: no station for ' + (it.jobNo || it._id) + ' / ' + it.address); continue; }
+    try {
+      var resp = UrlFetchApp.fetch('https://www.adicotengineeringinc.com/_functions/setProjectWeather', {
+        method: 'post', contentType: 'application/json',
+        payload: JSON.stringify({ _id: it._id, weatherData: JSON.stringify(w) }),
+        muteHttpExceptions: true });
+      var r = JSON.parse(resp.getContentText());
+      if (r.status === 'ok') done++; else { failed++; _logToSheet('backfill ' + r.status + ' for ' + (it.jobNo || it._id)); }
+    } catch (e) { failed++; _logToSheet('backfill POST err ' + (it.jobNo || it._id) + ': ' + e.message); }
+    Utilities.sleep(800);
+  }
+  Logger.log('Batch: updated=' + done + ' noAddress=' + noAddr + ' noStation=' + noStation + ' failed=' + failed +
+             '. Remaining ≈ ' + (list.total - done) + '. RUN AGAIN until updated=0.');
+}
+
+// Manually fire the admin review notification email for a project added by
+// hand in the Wix CMS. Pass the CMS record _id. Run from the editor.
+function sendReviewEmailForProject(projectId) {
+  if (!projectId) { Logger.log('Pass a CMS _id.'); return; }
+  try {
+    var resp = UrlFetchApp.fetch(
+      'https://www.adicotengineeringinc.com/_functions/getProject?id=' + encodeURIComponent(projectId),
+      { muteHttpExceptions: true });
+    var json = JSON.parse(resp.getContentText());
+    if (json.status !== 'ok' || !json.project) {
+      Logger.log('Project not found for _id: ' + projectId + ' — ' + resp.getContentText().substring(0, 200));
+      return;
+    }
+    var p = json.project;
+    var data = {
+      jobNo:            p.jobNo            || '',
+      projectName:      p.projectName      || '',
+      projectFolder:    p.projectFolder    || '',
+      clientName:       p.clientName        || ((p.clientFirstName||'') + ' ' + (p.clientLastName||'')).trim(),
+      clientCompany:    p.clientCompany    || '',
+      sf:               p.sf               || 0,
+      productService:   p.productService   || '',
+      dateReceived:     p.dateReceived     || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'M/d/yyyy'),
+      newClientFlag:    '',
+      projectAddress:   p.projectAddress   || '',
+      occupants:        p.occupants        || '',
+      occupancyType:    p.occupancyType    || '',
+      buildingStatus:   p.buildingStatus   || '',
+      roofRValue:       p.roofRValue       || '',
+      wallConstruction: p.wallConstruction || '',
+      glassU:           p.glassU           || '',
+      glassSHGC:        p.glassSHGC        || '',
+      ceilingHeight:    p.ceilingHeight    || '',
+      heatGenEquipment: p.heatGenEquipment || '',
+      deckType:         p.deckType         || '',
+      roofCover:        p.roofCover        || '',
+      insulPosition:    p.insulPosition    || '',
+      suspCeiling:      p.suspCeiling      || '',
+      atticCond:        p.atticCond        || '',
+      doorType:         p.doorType         || '',
+    };
+    _sendAdminReviewEmail(data, p._id);
+    Logger.log('Review email sent for ' + (data.jobNo || data.projectFolder) + ' to ' + REVIEW_EMAIL);
+  } catch (err) {
+    Logger.log('sendReviewEmailForProject ERROR: ' + err.message);
+  }
+}
+
+function runReviewEmailNow() {
+  sendReviewEmailForProject('d75cc615-aa2f-4370-9705-12b3a745d304');
 }
