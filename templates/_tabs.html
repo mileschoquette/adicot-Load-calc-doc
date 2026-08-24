@@ -1,9 +1,10 @@
 {# ─────────────────────────────────────────────────────────
    Tab strip — included at the top of every job page.
-   Pass `active_tab` ("star"|"pdfs"|"duct"|"charts"|"spec"|"equip"|"quality")
+   Pass `active_tab` ("star"|"pdfs"|"duct"|"charts"|"spec"|"equip"|"quality"|"invoice")
    and `job_id`. `parsed` gates the six work tabs; it defaults to True for the
    work-tab pages (which only render after a parse) and is set explicitly on
-   the star page.
+   the star page. `meta` (shared via include context) gates the Invoice tab to
+   CMS-sourced jobs only.
    ───────────────────────────────────────────────────────── #}
 {% set parsed = parsed if parsed is defined else True %}
 <nav class="tab-strip" aria-label="Job tabs">
@@ -32,6 +33,10 @@
     <span class="tab disabled" title="Parse the job to enable">Specs</span>
     <span class="tab disabled" title="Parse the job to enable">Equipment</span>
     <span class="tab disabled" title="Parse the job to enable">Quality Check</span>
+  {% endif %}
+  {% if meta.get('source') == 'cms' or meta.get('wix_item_id') %}
+    <a class="tab {% if active_tab == 'invoice' %}active{% endif %}"
+       href="{{ url_for('job_invoice', job_id=job_id) }}">Invoice</a>
   {% endif %}
   <a class="tab tab-right" href="{{ url_for('index') }}">All Jobs</a>
 </nav>

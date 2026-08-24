@@ -941,6 +941,38 @@ def job_star(job_id: str):
     )
 
 
+@app.route("/job/<job_id>/invoice", methods=["GET"])
+@_require_auth
+def job_invoice(job_id: str):
+    """Per-job invoice tab (CMS jobs only) — create/attach a QuickBooks invoice."""
+    job_dir = _safe_job_path(job_id)
+
+    if job_dir.exists():
+        meta = _load_meta(job_id)
+        source = meta.get("source") or ("cms" if meta.get("wix_item_id") else "temp")
+    else:
+        record = wix_client.get_project(job_id)
+        if not record:
+            abort(404)
+        source = "cms"
+        meta = {
+            "wix_item_id":     job_id,
+            "wix_snapshot":    record,
+            "project_address": (record.get("projectAddress") or "").strip(),
+        }
+
+    if source != "cms":
+        abort(404)
+
+    invoice = _load_invoice_registry().get(job_id)
+
+    return render_template(
+        "job_invoice.html",
+        active_tab="invoice", job_id=job_id, meta=meta,
+        qbo_status=qbo.connection_status(), invoice=invoice,
+    )
+
+
 # ─── Routes: Results page ─────────────────────────────────────────────
 
 @app.route("/results/<job_id>")
@@ -1899,18 +1931,6 @@ def _suggest_customer_id(customers: list[dict], company: str, code: str,
             if company in nm or company in comp:
                 return c["id"]
     return None
-
-
-@app.route("/invoices")
-@_require_auth
-def invoices():
-    """Invoice tab — CMS projects with a 'Ready to invoice?' action per row."""
-    entries = _build_cms_entries()
-    reg = _load_invoice_registry()
-    for e in entries:
-        e["invoice"] = reg.get(e["_id"])
-    return render_template("invoices.html",
-                           projects=entries, qbo_status=qbo.connection_status())
 
 
 @app.route("/api/qbo/lists")

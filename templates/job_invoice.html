@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}Invoice — {{ meta.project_address or meta.project_name or "Job" }} — Adicot HVAC Pipeline{% endblock %}
+{% block content %}
+{% include "_tabs.html" %}
+
+{% set snap = meta.wix_snapshot or {} %}
+<div class="page-head">
+  <h2>Invoice</h2>
+</div>
+<p class="muted">{{ snap.jobNo or meta.project_address or "" }}{% if snap.jobNo and (meta.project_address or meta.project_name) %} — {% endif %}{{ meta.project_address or meta.project_name or "" }}</p>
+
+{% if not qbo_status.connected %}
+  <div class="drive-banner drive-banner-error">
+    <strong>Not connected to QuickBooks.</strong>
+    <a href="{{ url_for('quickbooks_admin') }}">Connect</a> first to create invoices.
+  </div>
+{% elif invoice %}
+  <p>
+    <a href="{{ invoice.url }}" target="_blank" rel="noopener">
+      <span class="badge badge-ok">Invoiced</span>
+      #{{ invoice.doc_number or invoice.invoice_id }}</a>
+  </p>
+
+  <h3>Attach files</h3>
+  <div class="field" id="inv-pdf-field">
+    <div id="inv-pdf-list"></div>
+  </div>
+  <div class="modal-error" id="inv-error" hidden></div>
+  <button type="button" class="btn-primary" id="inv-attach">Attach selected</button>
+
+  <script>
+  (function () {
+    const jobId   = {{ job_id|tojson }};
+    const pdfList = document.getElementById('inv-pdf-list');
+    const errBox  = document.getElementById('inv-error');
+    const btn     = document.getElementById('inv-attach');
+
+    function showError(msg) { errBox.textContent = msg; errBox.hidden = false; }
+    function clearError() { errBox.hidden = true; errBox.textContent = ''; }
+
+    function renderPdfChecks(pdfs) {
+      pdfList.innerHTML = '';
+      if (pdfs && pdfs.length) {
+        for (const f of pdfs) {
+          const lbl = document.createElement('label');
+          lbl.className = 'pdf-check';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox'; cb.value = f.id;     // Drive file id
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(' ' + f.name));
+          pdfList.appendChild(lbl);
+        }
+      } else {
+        pdfList.innerHTML = '<p class="muted small">No files in the Google Drive 6-Submit folder for this project yet.</p>';
+      }
+    }
+
+    (async function init() {
+      try {
+        const d = await (await fetch('/api/qbo/prepare/' + encodeURIComponent(jobId))).json();
+        renderPdfChecks(d.pdfs);
+      } catch (e) { renderPdfChecks([]); }
+    })();
+
+    btn.addEventListener('click', async () => {
+      clearError();
+      const checked = Array.from(pdfList.querySelectorAll('input:checked')).map(cb => cb.value);
+      if (!checked.length) return showError('Select at least one file to attach.');
+      btn.disabled = true;
+      const body = new URLSearchParams();
+      checked.forEach(v => body.append('pdfs', v));
+      try {
+        const d = await (await fetch('/job/' + encodeURIComponent(jobId) + '/attach',
+                                     { method: 'POST', body })).json();
+        if (d.ok) {
+          btn.textContent = 'Attached ✓';
+          setTimeout(() => location.reload(), 900);
+        } else {
+          showError(d.error || 'Attach failed.');
+          btn.disabled = false;
+        }
+      } catch (e) { showError('Network error attaching files.'); btn.disabled = false; }
+    });
+  })();
+  </script>
+{% else %}
+  <p class="muted small">This creates a <strong>draft</strong> invoice in QuickBooks
+    ({{ qbo_status.environment }}) — it is not emailed to the client.</p>
+
+  <div class="field">
+    <label for="inv-customer">Customer</label>
+    <select id="inv-customer"></select>
+  </div>
+  <div class="field" id="inv-new-customer" hidden>
+    <label for="new-cust-name">New client — display name</label>
+    <input type="text" id="new-cust-name">
+    <label for="new-cust-company">Company (optional)</label>
+    <input type="text" id="new-cust-company">
+    <label for="new-cust-email">Email (optional)</label>
+    <input type="email" id="new-cust-email">
+    <div class="modal-error" id="new-cust-error" hidden></div>
+    <button type="button" class="btn-ghost" id="new-cust-create">Create client</button>
+  </div>
+  <div class="field">
+    <label for="inv-item">Service item</label>
+    <select id="inv-item"></select>
+  </div>
+  <div class="field">
+    <label for="inv-amount">Amount ($)</label>
+    <input type="number" id="inv-amount" step="0.01" min="0">
+  </div>
+  <div class="field">
+    <label for="inv-desc">Description</label>
+    <input type="text" id="inv-desc">
+  </div>
+  <div class="field" id="inv-pdf-field" hidden>
+    <label>Attach files <span class="optional">(optional)</span></label>
+    <div id="inv-pdf-list"></div>
+  </div>
+
+  <div class="modal-error" id="inv-error" hidden></div>
+  <button type="button" class="btn-primary" id="inv-create">Create invoice</button>
+
+  <script>
+  (function () {
+    const jobId    = {{ job_id|tojson }};
+    const selCust  = document.getElementById('inv-customer');
+    const selItem  = document.getElementById('inv-item');
+    const inAmount = document.getElementById('inv-amount');
+    const inDesc   = document.getElementById('inv-desc');
+    const errBox   = document.getElementById('inv-error');
+    const btnCreate= document.getElementById('inv-create');
+    const pdfField = document.getElementById('inv-pdf-field');
+    const pdfList  = document.getElementById('inv-pdf-list');
+    const newCustBox     = document.getElementById('inv-new-customer');
+    const newCustName    = document.getElementById('new-cust-name');
+    const newCustCompany = document.getElementById('new-cust-company');
+    const newCustEmail   = document.getElementById('new-cust-email');
+    const newCustError   = document.getElementById('new-cust-error');
+    const newCustCreate  = document.getElementById('new-cust-create');
+
+    let lastPrepare = null;   // most recent /api/qbo/prepare response
+
+    function opt(value, text) { const o = document.createElement('option'); o.value = value; o.textContent = text; return o; }
+    function showError(msg) { errBox.textContent = msg; errBox.hidden = false; }
+    function clearError() { errBox.hidden = true; errBox.textContent = ''; }
+
+    function renderPdfChecks(pdfs) {
+      pdfList.innerHTML = '';
+      if (pdfs && pdfs.length) {
+        for (const f of pdfs) {
+          const lbl = document.createElement('label');
+          lbl.className = 'pdf-check';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox'; cb.value = f.id;     // Drive file id
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(' ' + f.name));
+          pdfList.appendChild(lbl);
+        }
+        pdfField.hidden = false;
+      } else {
+        pdfField.hidden = true;
+      }
+    }
+
+    function showNewCustomerForm() {
+      newCustBox.hidden = false;
+      newCustName.value = (lastPrepare && (lastPrepare.client_name || lastPrepare.company)) || '';
+      newCustCompany.value = (lastPrepare && lastPrepare.company) || '';
+      newCustEmail.value = (lastPrepare && lastPrepare.email) || '';
+    }
+
+    async function loadLists() {
+      const r = await fetch('/api/qbo/lists');
+      const d = await r.json();
+      selCust.innerHTML = ''; selItem.innerHTML = '';
+      selCust.appendChild(opt('', '— select customer —'));
+      for (const c of d.customers) selCust.appendChild(opt(c.id, c.name + (c.company && c.company !== c.name ? ' (' + c.company + ')' : '')));
+      selCust.appendChild(opt('__new__', '+ Add new client…'));
+      selItem.appendChild(opt('', '— select service item —'));
+      for (const it of d.items) selItem.appendChild(opt(it.id, it.name + (it.price ? '  ($' + it.price + ')' : '')));
+    }
+
+    selCust.addEventListener('change', () => {
+      if (selCust.value === '__new__') showNewCustomerForm();
+      else newCustBox.hidden = true;
+    });
+
+    newCustCreate.addEventListener('click', async () => {
+      newCustError.hidden = true; newCustError.textContent = '';
+      const displayName = newCustName.value.trim();
+      if (!displayName) {
+        newCustError.textContent = 'Display name is required.';
+        newCustError.hidden = false;
+        return;
+      }
+      newCustCreate.disabled = true;
+      newCustCreate.textContent = 'Creating…';
+      try {
+        const body = new URLSearchParams({
+          display_name: displayName,
+          company: newCustCompany.value.trim(),
+          email: newCustEmail.value.trim(),
+        });
+        const r = await fetch('/api/qbo/customers', { method: 'POST', body });
+        const d = await r.json();
+        if (d.ok) {
+          selCust.appendChild(opt(d.id, d.name + (d.company && d.company !== d.name ? ' (' + d.company + ')' : '')));
+          selCust.value = String(d.id);
+          newCustBox.hidden = true;
+        } else {
+          newCustError.textContent = d.error || 'Failed to create client.';
+          newCustError.hidden = false;
+        }
+      } catch (e) {
+        newCustError.textContent = 'Network error creating client.';
+        newCustError.hidden = false;
+      } finally {
+        newCustCreate.disabled = false;
+        newCustCreate.textContent = 'Create client';
+      }
+    });
+
+    btnCreate.addEventListener('click', async () => {
+      clearError();
+      if (selCust.value === '__new__') return showError('Finish adding the new client first, or pick an existing one.');
+      if (!selCust.value) return showError('Pick a customer.');
+      if (!selItem.value) return showError('Pick a service item.');
+      if (!inAmount.value || Number(inAmount.value) <= 0) return showError('Enter an amount greater than 0.');
+
+      btnCreate.disabled = true;
+      const body = new URLSearchParams({
+        customer_id: selCust.value, item_id: selItem.value,
+        amount: inAmount.value, description: inDesc.value, job_no: (lastPrepare && lastPrepare.job_no) || '',
+      });
+      Array.from(pdfList.querySelectorAll('input:checked')).forEach(cb => body.append('pdfs', cb.value));
+      try {
+        const r = await fetch('/job/' + encodeURIComponent(jobId) + '/invoice', { method: 'POST', body });
+        const d = await r.json();
+        if (d.ok || (d.invoice && d.invoice.invoice_id)) {
+          location.reload();
+        } else {
+          showError(d.error || 'Invoice creation failed.');
+          btnCreate.disabled = false;
+        }
+      } catch (e) {
+        showError('Network error creating the invoice.');
+        btnCreate.disabled = false;
+      }
+    });
+
+    (async function init() {
+      await loadLists();
+      try {
+        const r = await fetch('/api/qbo/prepare/' + encodeURIComponent(jobId));
+        const d = await r.json();
+        lastPrepare = d;
+        if (d.total_cost != null && d.total_cost !== '') inAmount.value = d.total_cost;
+        if (d.description) inDesc.value = d.description;
+        if (d.suggested_customer_id) {
+          selCust.value = String(d.suggested_customer_id);
+        } else {
+          selCust.value = '__new__';
+          showNewCustomerForm();
+        }
+        renderPdfChecks(d.pdfs);
+      } catch (e) { /* leave fields blank for manual entry */ }
+    })();
+  })();
+  </script>
+{% endif %}
+
+{% endblock %}

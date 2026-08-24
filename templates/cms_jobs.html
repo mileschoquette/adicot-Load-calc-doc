@@ -88,6 +88,9 @@
                 {% else %}
                   <span class="muted small">—</span>
                 {% endif %}
+                {% if p.invoiced %}
+                  <span class="badge badge-ok">Invoiced</span>
+                {% endif %}
                 <button type="button" class="danger-link delete-btn"
                         data-id="{{ p._id }}"
                         data-label="{{ p.job_no or p.address or p.title or 'this project' }}">Delete</button>
