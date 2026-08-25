@@ -21,7 +21,7 @@ The CHECK formula matches the workbook:
 
 Usage:
     from openpyxl import Workbook
-    from duct_sizing import write_duct_sizing
+    from hvac.duct_sizing import write_duct_sizing
 
     wb = Workbook()
     write_duct_sizing(wb, report.supply_air)
@@ -32,7 +32,7 @@ from __future__ import annotations
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 
-from hvac_pipeline import is_zone as _is_zone
+from hvac.hvac_pipeline import is_zone as _is_zone
 
 
 # Threshold (in CFM) above which an under-supply on a room row counts

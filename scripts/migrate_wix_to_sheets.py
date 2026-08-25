@@ -32,8 +32,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import wix_client  # noqa: E402  (repo root on sys.path, see above)
-from sheets_client import SHEET_COLUMNS  # noqa: E402
+from integrations import wix_client  # noqa: E402  (repo root on sys.path, see above)
+from integrations.sheets_client import SHEET_COLUMNS  # noqa: E402
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _WORKSHEET_NAME = os.environ.get("GOOGLE_SHEETS_WORKSHEET_NAME", "Projects")

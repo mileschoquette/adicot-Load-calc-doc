@@ -12,11 +12,11 @@ working unchanged for every existing call site.
 from __future__ import annotations
 from pathlib import Path
 
-from hvac_parse import *
-from hvac_parse import _clean_number, _clean_int, _ft_inches, _data_cells, _data_rows, _simple_rows
-from hvac_compute import *
-from hvac_legacy_pdf import *
-from hvac_legacy_pdf import _hdr, _cell, _fmt_int, _fmt_num, _fmt_date, _parse_calc_date
+from hvac.hvac_parse import *
+from hvac.hvac_parse import _clean_number, _clean_int, _ft_inches, _data_cells, _data_rows, _simple_rows
+from hvac.hvac_compute import *
+from hvac.hvac_legacy_pdf import *
+from hvac.hvac_legacy_pdf import _hdr, _cell, _fmt_int, _fmt_num, _fmt_date, _parse_calc_date
 
 
 def _fmt_cfm(v):
@@ -45,8 +45,8 @@ def build_all_pdfs(html_path: Path, config: ProjectConfig,
     # conversion fails, fall back to the ReportLab renderer so a PDF always
     # exists. Conversions run one at a time to keep the memory peak low.
     import traceback
-    import schedule_xlsx
-    import xlsx_to_pdf
+    from pdf import schedule_xlsx
+    from pdf import xlsx_to_pdf
 
     schedules = [
         ("Ventilation",

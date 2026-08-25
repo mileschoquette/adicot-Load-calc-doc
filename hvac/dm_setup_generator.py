@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 from typing import Iterable, Sequence
 
-_LIBRARY_PATH = Path(__file__).with_name("room_types.json")
+_LIBRARY_PATH = Path(__file__).resolve().parent.parent / "room_types.json"
 
 # Column order for the tblRoomS INSERT. ixElecRoomS/ixPlumbRoomS are omitted on
 # purpose (nullable, always NULL for HVAC-only types). ixRoomS is supplied at

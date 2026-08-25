@@ -2,7 +2,7 @@
 #
 # We deploy via Docker (rather than Render's native Python runtime) solely so we
 # can install LibreOffice, which renders the three schedule .xlsx files to
-# spreadsheet-origin PDFs (see xlsx_to_pdf.py). Everything else — the persistent
+# spreadsheet-origin PDFs (see pdf/xlsx_to_pdf.py). Everything else — the persistent
 # jobs disk, env vars, auth — is unchanged from the previous runtime.
 FROM python:3.12.6-slim
 

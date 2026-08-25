@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-DB_PATH = Path(__file__).parent / "dehumidifier_database.csv"
+DB_PATH = Path(__file__).resolve().parent.parent / "dehumidifier_database.csv"
 _DB_CACHE: dict[str, pd.DataFrame] = {}
 
 LATENT_BTU_PER_PINT = 1054.0  # BTU released per pint of moisture condensed (HVAC School sizing convention)

@@ -10,7 +10,7 @@ import re
 import math
 from dataclasses import dataclass, field
 
-from hvac_parse import HVACReport, RoomVent, RoomInfoP2, _clean_number
+from hvac.hvac_parse import HVACReport, RoomVent, RoomInfoP2, _clean_number
 
 
 @dataclass
