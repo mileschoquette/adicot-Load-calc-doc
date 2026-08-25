@@ -18,7 +18,7 @@ All charts use matplotlib's `Agg` backend so they work in a headless server.
 No GUI, no display calls. matplotlib is the only chart dep.
 
 Usage:
-    from charts import render_all_charts
+    from pdf.charts import render_all_charts
     rendered = render_all_charts(report, out_dir=Path("jobs/<id>/out/charts"))
     # rendered is a list[Path] of files actually written
 """
@@ -30,7 +30,7 @@ import matplotlib
 matplotlib.use("Agg")  # must be set before pyplot import — headless safe
 import matplotlib.pyplot as plt
 
-from hvac_pipeline import is_zone as _is_zone
+from hvac.hvac_pipeline import is_zone as _is_zone
 
 
 # Adicot brand-ish palette — tweak when the rest of the UI gets styled

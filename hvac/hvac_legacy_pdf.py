@@ -21,7 +21,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 
-from hvac_compute import ProjectConfig
+from hvac.hvac_compute import ProjectConfig
 
 BLACK = colors.black
 GREY  = colors.HexColor("#7f7f7f")

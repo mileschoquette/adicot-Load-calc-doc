@@ -267,7 +267,7 @@ def build_load_summary_xlsx(computed, report, config, engineer, firm,
                             out_path: Path,
                             project_name: str | None = None) -> Path:
     # Lazy import to avoid a circular import at module load.
-    from hvac_pipeline import (grains_water_difference, _parse_calc_date,
+    from hvac.hvac_pipeline import (grains_water_difference, _parse_calc_date,
                                _fmt_date)
 
     out_path = Path(out_path)

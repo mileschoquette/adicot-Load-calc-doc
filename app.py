@@ -70,29 +70,29 @@ from flask import (Flask, render_template, request, send_from_directory,
                    session)
 from werkzeug.utils import secure_filename
 
-import hvac_pipeline as hp
-from charts import render_all_charts
+from hvac import hvac_pipeline as hp
+from pdf.charts import render_all_charts
 import calendar_utils
-import wix_client
-import sheets_client
-import portal_tokens
-import lpd_max
-import gmail_client
-import validators
-import gdrive_client
-import spec_engine
-import spec_data
-import spec_docx
-import pdf_crop
-import pdf_combine
-import html_pdf
-import room_qc
-import roof_check
-import quickbooks_client as qbo
+from integrations import wix_client
+from integrations import sheets_client
+from integrations import portal_tokens
+from hvac import lpd_max
+from integrations import gmail_client
+from hvac import validators
+from integrations import gdrive_client
+from spec import spec_engine
+from spec import spec_data
+from spec import spec_docx
+from pdf import pdf_crop
+from pdf import pdf_combine
+from pdf import html_pdf
+from hvac import room_qc
+from hvac import roof_check
+from integrations import quickbooks_client as qbo
 
 # ── Equipment selector (optional — graceful fallback if files not present) ──
 try:
-    import hvac_selector as eng
+    from hvac import hvac_selector as eng
     HAS_EQUIP_SELECTOR = True
     _EQUIP_IMPORT_ERROR = None
 except Exception as _e:
@@ -101,7 +101,7 @@ except Exception as _e:
 
 # ── Combined equipment schedule glue (ERV + dehumidifier adjustments) ──
 try:
-    import equip_schedule
+    from hvac import equip_schedule
     HAS_EQUIP_SCHEDULE = True
     _EQUIP_SCHEDULE_IMPORT_ERROR = None
 except Exception as _e:
@@ -120,7 +120,7 @@ except Exception as _e:
 
 # ── Dehumidifier sizing (optional — graceful fallback if pandas/module missing) ──
 try:
-    import dehumid_calc as dh
+    from hvac import dehumid_calc as dh
     HAS_DEHUMID = HAS_EQUIP_SCHEDULE
     _DEHUMID_IMPORT_ERROR = None
 except Exception as _e:
@@ -129,7 +129,7 @@ except Exception as _e:
 
 # ── DM Setup .vbs generator (optional — graceful fallback if module missing) ──
 try:
-    import dm_setup_generator as dmsg
+    from hvac import dm_setup_generator as dmsg
     HAS_DM_SETUP_GENERATOR = True
     _DM_SETUP_IMPORT_ERROR = None
 except Exception as _e:
@@ -332,7 +332,7 @@ def _crop_authorized(req) -> bool:
 # this route reads the raw body itself and is not bound by request.form parsing.
 # Send ONE PDF per request (keeps the base64 well under Apps Script's 50 MB cap).
 #
-# Requires (top of file):  import pdf_crop
+# Requires (top of file):  from pdf import pdf_crop
 # requirements.txt:        pymupdf>=1.24
 # Render env:              CROP_TOKEN = <long random string> (same value in Apps
 #                          Script Script Properties as CROP_TOKEN)
@@ -2117,8 +2117,8 @@ def _debug_equip_status():
     return jsonify({
         "has_equip_selector": HAS_EQUIP_SELECTOR,
         "import_error": _EQUIP_IMPORT_ERROR,
-        "hvac_selector_path": str(Path(__file__).parent / "hvac_selector.py"),
-        "hvac_selector_exists": (Path(__file__).parent / "hvac_selector.py").exists(),
+        "hvac_selector_path": str(Path(__file__).parent / "hvac" / "hvac_selector.py"),
+        "hvac_selector_exists": (Path(__file__).parent / "hvac" / "hvac_selector.py").exists(),
         "equipment_db_path": str(Path(__file__).parent / "equipment_db.xlsx"),
         "equipment_db_exists": (Path(__file__).parent / "equipment_db.xlsx").exists(),
     })
@@ -3848,7 +3848,7 @@ def job_equip_download(job_id: str, fname: str):
     return send_from_directory(out_dir, fname, as_attachment=True)
 
 
-import daily_digest
+from integrations import daily_digest
 daily_digest.start_scheduler()
 
 

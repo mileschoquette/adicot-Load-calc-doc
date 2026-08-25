@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from openpyxl import Workbook
 
-import hvac_selector as sel
+from hvac import hvac_selector as sel
 
 # Each engine is independently optional — a missing dependency for one (e.g.
 # pandas for dehumid_calc) must not break the other.
 try:
-    import dehumid_calc as dh
+    from hvac import dehumid_calc as dh
 except Exception:
     dh = None
 

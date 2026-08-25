@@ -25,7 +25,7 @@ from typing import Optional
 
 import requests
 
-from wix_client import _credentials, _headers
+from integrations.wix_client import _credentials, _headers
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ _CLAUSES_ID = "Import7"
 _HTTP_TIMEOUT_SECONDS = 6
 _CACHE_TTL_SECONDS = 600  # spec text changes rarely; 10 min is plenty
 
-_SEED_PATH = Path(__file__).resolve().parent / "spec_seed.json"
+_SEED_PATH = Path(__file__).resolve().parent.parent / "spec_seed.json"
 
 # In-memory per-worker cache of the merged data bundle.
 _cache: dict = {"data": None, "fetched_at": 0.0}

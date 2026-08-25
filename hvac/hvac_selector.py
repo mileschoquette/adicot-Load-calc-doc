@@ -30,7 +30,7 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
-DB_PATH = Path(__file__).parent / "equipment_db.xlsx"
+DB_PATH = Path(__file__).resolve().parent.parent / "equipment_db.xlsx"
 
 # Equipment types
 AC_SINGLE   = "GA5SAN5"

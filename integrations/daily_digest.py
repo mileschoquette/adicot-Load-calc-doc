@@ -33,7 +33,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import calendar_utils
-import email_client
+from integrations import email_client
 
 log = logging.getLogger(__name__)
 
