@@ -77,7 +77,7 @@ import wix_client
 import sheets_client
 import portal_tokens
 import lpd_max
-import email_client
+import gmail_client
 import validators
 import gdrive_client
 import spec_engine
@@ -1181,8 +1181,9 @@ def job_star_save(job_id: str):
     Collects every posted field into ONE dict and writes it in a single
     _cms.update_project() call, never one write per field. If the form's
     action is 'save_and_send', also mints a 180-day magic-link token and
-    emails it to the client (folded into the same update_project() call by
-    setting status alongside the other fields, not a second write)."""
+    creates a Gmail draft containing it (folded into the same update_project()
+    call by setting status alongside the other fields, not a second write) —
+    never auto-sent; a human opens Gmail and clicks Send."""
     action = request.form.get("action", "save")
     fields = {}
     for _title, section_fields in _WORK_ORDER_SECTIONS:
@@ -1219,10 +1220,13 @@ def job_star_save(job_id: str):
             f"Adicot to begin work:\n\n{portal_url}\n\n"
             "This link is valid for 180 days.\n\nThanks,\nAdicot, Inc."
         )
-        if email_client.send_email([client_email], subject, body):
-            flash(f"Saved and sent the client portal link to {client_email}.")
+        # Creates a real Gmail draft, never auto-sends — a human opens Gmail
+        # and clicks Send. See gmail_client.py for the domain-wide-delegation
+        # setup this requires.
+        if gmail_client.create_draft([client_email], subject, body):
+            flash(f"Saved. A draft to {client_email} is waiting in Gmail — open it and hit Send when ready.")
         else:
-            flash("Saved, but the email to the client failed to send — check SMTP settings.")
+            flash("Saved, but creating the Gmail draft failed — check the Gmail API / domain-wide delegation setup.")
     else:
         flash("Work order saved.")
 
