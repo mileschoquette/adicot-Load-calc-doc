@@ -1267,6 +1267,28 @@ def portal(token: str):
             return render_template("portal.html", job=record, code_checks={},
                                     signed=True, token=token)
 
+        # Collect every posted work-order field once — shared by both the
+        # "save progress" and "sign" actions below, and written in exactly
+        # ONE batched _cms.update_project() call either way.
+        posted_fields = {}
+        for _title, section_fields in _WORK_ORDER_SECTIONS:
+            for _label, key in section_fields:
+                canonical_key = key[0] if isinstance(key, (list, tuple)) else key
+                if canonical_key in request.form:
+                    posted_fields[canonical_key] = request.form.get(canonical_key, "")
+
+        action = request.form.get("action", "sign")
+
+        if action == "save_progress":
+            # Partial save — no terms/signature required. The same magic
+            # link brings the client back to finish later; status stays
+            # whatever it already was (does NOT flip to Current Work).
+            _cms.update_project(job_id, posted_fields)
+            record = _cms.get_project(job_id) or record
+            flash("Progress saved. You can come back to this same link anytime to finish.")
+            return render_template("portal.html", job=record, code_checks=_portal_code_checks(record),
+                                    signed=False, token=token)
+
         terms_ok = all(request.form.get(f"agree_terms_{i}") for i in (1, 2, 3))
         signer_name = (request.form.get("signer_name") or "").strip()
         signer_title = (request.form.get("signer_title") or "").strip()
@@ -1274,13 +1296,6 @@ def portal(token: str):
             flash("Please check all three agreement boxes and enter your name and title before signing.")
             return render_template("portal.html", job=record, code_checks=_portal_code_checks(record),
                                     signed=False, token=token)
-
-        posted_fields = {}
-        for _title, section_fields in _WORK_ORDER_SECTIONS:
-            for _label, key in section_fields:
-                canonical_key = key[0] if isinstance(key, (list, tuple)) else key
-                if canonical_key in request.form:
-                    posted_fields[canonical_key] = request.form.get(canonical_key, "")
 
         # Everything the client answered PLUS the signature, in one batched
         # write — never one call per field.

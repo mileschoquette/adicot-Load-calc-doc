@@ -145,12 +145,20 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
 .next-step:last-child{border-bottom:none}
 .step-num{width:22px;height:22px;background:var(--orange);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
 .two-panel{display:grid;grid-template-columns:360px 1fr;gap:28px;align-items:start}.panel-left{min-width:0}.panel-right{min-width:0}@media(max-width:800px){.two-panel{grid-template-columns:1fr}}@media(max-width:560px){.page-wrap{padding:24px 16px}.portal-header{flex-direction:column;gap:12px}.header-right{text-align:left;margin-left:0}.proposal-meta{grid-template-columns:1fr}.two-col,.three-col{grid-template-columns:1fr}.sign-section{flex-direction:column}.btn-sign{width:100%}}
+.flash-banner{background:var(--green-lt);border:1px solid #A3D9A3;color:var(--green);border-radius:var(--radius-sm);padding:12px 16px;font-size:13px;margin-bottom:16px}
+.btn-save-progress{background:transparent;color:var(--dark);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:9px 20px;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.2px}
+.btn-save-progress:hover{border-color:var(--dark);background:var(--cream)}
 @media print{body{background:white}.btn-sign,.btn-print,.sign-section{display:none}.terms-block{max-height:none!important;overflow:visible!important;border:none!important}.panel-right{page-break-before:always}textarea.field-input{max-height:none!important;overflow:visible!important;height:auto!important}}
 </style>
 </head>
 <body>
 
 <div class="page-wrap">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      {% for m in messages %}<div class="flash-banner">{{ m }}</div>{% endfor %}
+    {% endif %}
+  {% endwith %}
   <div class="portal-header">
     <div class="header-left">
       <div class="project-name" id="projectName">{{ job.title or job.projectAddress or "Project" }}</div>
@@ -301,14 +309,15 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
 
     <div class="sign-section" id="sign-anchor">
       <div class="sign-text"><strong>Ready to proceed?</strong>By submitting, you execute this agreement and authorize Adicot, Inc. to begin work upon receipt of background drawings.</div>
-      <button class="btn-sign" id="signButton" type="submit" disabled>Sign &amp; Submit &#8594;</button>
+      <button class="btn-save-progress" type="submit" name="action" value="save_progress">Save Progress</button>
+      <button class="btn-sign" id="signButton" type="submit" name="action" value="sign" disabled>Sign &amp; Submit &#8594;</button>
     </div>
     <button class="btn-print" type="button" onclick="window.print()">Print a copy of this form</button>
   </div><!-- /panel-left -->
 
   <div class="panel-right">
     <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Project Specifications</div><div class="divider-line"></div></div>
-    <div class="wo-intro">Please review and complete the project specifications below.</div>
+    <div class="wo-intro">Please review and complete the project specifications below. Don't have everything handy? Use <strong>Save Progress</strong> below to save what you've entered so far — this same link will bring you back to pick up where you left off.<button class="btn-save-progress" type="submit" name="action" value="save_progress" style="display:block;margin-top:10px">Save Progress</button></div>
 
     <div class="card">
       <div class="card-header"><div class="card-title">Building Basics</div></div>
