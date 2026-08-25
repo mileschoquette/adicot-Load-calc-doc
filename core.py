@@ -6,7 +6,7 @@ dashboard and the daily digest, the JSON-registry load/save pairs, and the
 optional-feature import flags (equipment selector, ERV/dehumid, DM setup
 generator). Blueprints import what they need from here; this module must
 never import from `blueprints/*` (that would be a real circular import,
-unlike the deferred one this replaces — see integrations/daily_digest.py).
+unlike the deferred one this replaces, see integrations/daily_digest.py).
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Generate DM Setup tab — builds a Design Master setup .vbs (plus a
+"""Generate DM Setup tab, builds a Design Master setup .vbs (plus a
 load-calc JSON payload) from the CMS work order and/or the parsed .dm
 export."""
 

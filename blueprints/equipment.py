@@ -1,4 +1,4 @@
-"""Equipment Selection tab — Carrier A/C and heat pump selector, plus the
+"""Equipment Selection tab: Carrier A/C and heat pump selector, plus the
 optional ERV / dehumidifier load-adjustment glue."""
 
 from __future__ import annotations

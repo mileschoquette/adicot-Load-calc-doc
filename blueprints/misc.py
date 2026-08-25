@@ -102,7 +102,7 @@ def _debug_equip_status():
 
 
 # NOTE: this route used to be defined twice (two different view functions,
-# both bound to GET /debug/wix-projects) — a leftover from an earlier pass at
+# both bound to GET /debug/wix-projects), a leftover from an earlier pass at
 # the auto-expire diagnostic. This is the consolidated version: it keeps the
 # cache-invalidating, credentials-checking general Wix-connectivity shape
 # (the other candidate was a narrower one-off for validating _is_stale()

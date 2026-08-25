@@ -1,4 +1,4 @@
-"""HVAC Loads Pipeline — Flask entry point.
+"""HVAC Loads Pipeline, Flask entry point.
 
 This module only builds the Flask app and registers blueprints; the actual
 route handlers live in blueprints/*.py, and the shared state/helpers they
@@ -8,9 +8,9 @@ for the full module map.
 
 Flask always namespaces a blueprint's endpoints as "blueprintname.viewname"
 (the `endpoint=` kwarg on @blueprint.route only renames the part after the
-dot — it can't drop the blueprint prefix). Every `url_for(...)` call that
-used to reference a bare view-function name — in Python and in the Jinja
-templates — was updated to the "blueprintname.viewname" form (or, for a
+dot, it can't drop the blueprint prefix). Every `url_for(...)` call that
+used to reference a bare view-function name, in Python and in the Jinja
+templates, was updated to the "blueprintname.viewname" form (or, for a
 same-blueprint redirect, the relative ".viewname" shorthand) when the routes
 moved into blueprints/*.py.
 

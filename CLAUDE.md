@@ -36,7 +36,7 @@ The three signed schedules are generated as Excel first (`pdf/schedule_xlsx.py`)
 
 `app.py` is a slim entry point: it builds the Flask app, sets config, registers every blueprint, and starts the daily-digest scheduler. It holds no route handlers and no shared state itself.
 
-- `core.py` — connective tissue nearly every blueprint imports from: the `@_require_auth` basic-auth decorator, job-path/meta helpers (`_job_dir`, `_load_meta`, `_save_meta`, `_load_report`, `_parse_and_persist`, ...), the `@_require_parsed` decorator, the CMS backend indirection (`_cms`), the JSON-registry load/save pairs (stage/notes/assigned/manual-tasks/due-date/calendar-events/invoice), the `_build_cms_entries()` builder used by both the dashboard and the daily digest, and the optional-feature import flags (`HAS_EQUIP_SELECTOR`, `HAS_ERV`, `HAS_DEHUMID`, `HAS_DM_SETUP_GENERATOR`, `HAS_EQUIP_SCHEDULE`, each with a matching `_*_IMPORT_ERROR`). `core.py` never imports from `blueprints/*` — blueprints import from `core`, not the other way around.
+- `core.py` — connective tissue nearly every blueprint imports from: the `@_require_auth` basic-auth decorator, job-path/meta helpers (`_job_dir`, `_load_meta`, `_save_meta`, `_load_report`, `_parse_and_persist`, ...), the `@_require_parsed` decorator, the CMS backend indirection (`_cms`), the JSON-registry load/save pairs (stage/notes/assigned/manual-tasks/due-date/calendar-events/invoice), the `_build_cms_entries()` builder used by both the dashboard and the daily digest, and the optional-feature import flags (`HAS_EQUIP_SELECTOR`, `HAS_ERV`, `HAS_DEHUMID`, `HAS_DM_SETUP_GENERATOR`, `HAS_EQUIP_SCHEDULE`, each with a matching `_*_IMPORT_ERROR`). `core.py` never imports from `blueprints/*`; blueprints import from `core`, not the other way around.
 - `blueprints/` — one Flask `Blueprint` module per route group:
   - `dashboard.py` — landing list (`/`), Calendar tab + due-date/event CRUD, job-list stage/notes/assigned/manual-tasks CRUD, temp-jobs index (`/jobs`, `/past-jobs` redirect), and both delete flows (local workspace, CMS record).
   - `job_lifecycle.py` — per-job home tab (★ Work Order / parse), the client portal, the PDF-generation/regeneration routes (including the combined-PDF + chart-appendix helpers that `quality.py`'s Charts tab reuses), re-scrape-from-Drive, the HTML-parse pipeline entry point, and file downloads.
@@ -49,7 +49,7 @@ The three signed schedules are generated as Excel first (`pdf/schedule_xlsx.py`)
 
 Each request loads/saves a per-job JSON state file, then re-runs the relevant module against it. There is no database.
 
-Every route's endpoint name is namespaced by its blueprint (Flask always does this — e.g. `job_lifecycle.job_star`, not `job_star`); every `url_for(...)` call, in Python and in the Jinja templates, uses the blueprint-qualified form (or a same-blueprint `.viewname` shorthand).
+Every route's endpoint name is namespaced by its blueprint (Flask always does this, e.g. `job_lifecycle.job_star`, not `job_star`); every `url_for(...)` call, in Python and in the Jinja templates, uses the blueprint-qualified form (or a same-blueprint `.viewname` shorthand).
 
 ### Per-job storage layout
 
@@ -64,7 +64,7 @@ jobs/<job_id>/
         *.docx, *.dxf, equipment outputs
 ```
 
-`job_id` is `secure_filename`-validated and resolved with a parent-containment check (`_job_dir` in `core.py`) — keep that pattern for any new job-scoped routes to prevent path traversal.
+`job_id` is `secure_filename`-validated and resolved with a parent-containment check (`_job_dir` in `core.py`); keep that pattern for any new job-scoped routes to prevent path traversal.
 
 ### Module map (logic lives here, NOT in `app.py` or `blueprints/*`)
 
@@ -82,7 +82,7 @@ jobs/<job_id>/
 - `integrations/wix_client.py` — mostly-read Wix Data v2 wrapper with a 5-minute per-worker TTL cache (`list_projects`, `get_project`), plus one write call (`delete_project`, requires "Manage" scope on `WIX_API_KEY` — the read calls only need "Read"). Returns `None`/`[]`/`False` on any error (don't raise from here).
 - `integrations/gdrive_client.py` — Drive read+write. Path convention: `1-Jobs/{Company}/{Job No}/4-Design/dm_hvac-loads1.html` (read) and `…/6-Submit/*.pdf` (write). `{Company}` is the first hyphen token of Job No. **1-Jobs must live on a Shared Drive** — service accounts have no personal quota. All calls use `corpora="allDrives"` + `includeItemsFromAllDrives=True` + `supportsAllDrives=True`. 15-min folder-id cache.
 - `integrations/email_client.py` — SMTP wrapper (`send_email`), stdlib `smtplib` only, no new dependency. Returns `False`/logs on any error (missing creds, auth failure, network) rather than raising.
-- `integrations/daily_digest.py` — builds and sends the daily jobs-list digest, reusing `core._build_cms_entries()`/`core._entry_bucket()`/`core._BUCKET_RANK` (a plain top-level `import core` — no circular-import risk, since `core.py` has no dependency on this module). Runs an in-process background thread (`start_scheduler()`, called unconditionally at the bottom of `app.py`) that checks the clock every 5 minutes and sends once per day at 7 AM `America/New_York`, deduped via `jobs/digest_state.json`. Not a Render Cron Job — a separate Cron Job resource can't mount the same persistent disk this app's registries live on.
+- `integrations/daily_digest.py` — builds and sends the daily jobs-list digest, reusing `core._build_cms_entries()`/`core._entry_bucket()`/`core._BUCKET_RANK` (a plain top-level `import core`, no circular-import risk, since `core.py` has no dependency on this module). Runs an in-process background thread (`start_scheduler()`, called unconditionally at the bottom of `app.py`) that checks the clock every 5 minutes and sends once per day at 7 AM `America/New_York`, deduped via `jobs/digest_state.json`. Not a Render Cron Job — a separate Cron Job resource can't mount the same persistent disk this app's registries live on.
 - `archive/docs-snippets/app_spec_routes.py` — dead paste-in snippet of spec routes, confirmed unused and already drifted from the real code (references a nonexistent `spec_dxf` module); the live routes are in `blueprints/spec_bp.py` (`/job/<id>/spec*`). Kept only as historical reference.
 - `archive/docs-snippets/crop_route.py` — dead paste-in reference, confirmed unused and already drifted (documents a `"box"` JSON field the real route never accepts, only `"bbox"`); the live `/crop` route is in `blueprints/misc.py`. Kept only as historical reference.
 
