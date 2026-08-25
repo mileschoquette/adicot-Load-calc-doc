@@ -15,11 +15,11 @@
   {% endif %}
 
   {% if charts|length > 0 %}
-    <form method="post" action="{{ url_for('job_charts_select', job_id=job_id) }}">
+    <form method="post" action="{{ url_for('quality.job_charts_select', job_id=job_id) }}">
       <p class="muted">
         Tick the charts to append to the <strong>Combined PDF</strong>, then build.
         The combined copy is the three deliverables followed by one page per
-        selected chart; download it from the <a href="{{ url_for('results', job_id=job_id) }}">PDFs</a> tab.
+        selected chart; download it from the <a href="{{ url_for('job_lifecycle.results', job_id=job_id) }}">PDFs</a> tab.
       </p>
 
       <div class="charts-grid">
@@ -30,7 +30,7 @@
                      {{ 'checked' if chart.name in selected }}>
               <span>Add to combined PDF</span>
             </label>
-            <img src="{{ url_for('download_chart', job_id=job_id, filename=chart.name) }}"
+            <img src="{{ url_for('job_lifecycle.download_chart', job_id=job_id, filename=chart.name) }}"
                  alt="{{ chart.caption }}"
                  loading="lazy">
             <figcaption>{{ chart.caption }}</figcaption>

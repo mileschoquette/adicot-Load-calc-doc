@@ -153,7 +153,7 @@
     only — it changes nothing in the deliverables.
   </p>
 
-  <form method="post" action="{{ url_for('job_quality_stories', job_id=job_id) }}"
+  <form method="post" action="{{ url_for('quality.job_quality_stories', job_id=job_id) }}"
         class="stories-form" style="margin:.5rem 0 1rem;">
     <label for="num_stories"><strong>Number of stories</strong></label>
     <input type="number" id="num_stories" name="num_stories" min="1" step="1"

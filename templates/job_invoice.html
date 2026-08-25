@@ -12,7 +12,7 @@
 {% if not qbo_status.connected %}
   <div class="drive-banner drive-banner-error">
     <strong>Not connected to QuickBooks.</strong>
-    <a href="{{ url_for('quickbooks_admin') }}">Connect</a> first to create invoices.
+    <a href="{{ url_for('quickbooks.quickbooks_admin') }}">Connect</a> first to create invoices.
   </div>
 {% elif invoice %}
   <p>

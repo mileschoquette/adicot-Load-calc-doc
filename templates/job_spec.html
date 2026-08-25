@@ -10,7 +10,7 @@
   Code editions come from the project's state ({{ state_info.state_full or state or "unknown" }}).
 </p>
 
-<form method="post" action="{{ url_for('job_spec_save', job_id=job_id) }}" class="job-form">
+<form method="post" action="{{ url_for('spec_bp.job_spec_save', job_id=job_id) }}" class="job-form">
 
   <section>
     <h3 style="margin-top:0;">Equipment <span class="spec-src spec-src-cms">from CMS &middot; equipment selection</span></h3>
@@ -93,7 +93,7 @@
   <h3 style="margin:0;">Specification</h3>
   <div style="display:flex; gap:.5rem;">
     <button type="button" class="btn-secondary" onclick="copySpec()">Copy to clipboard</button>
-    <form method="post" action="{{ url_for('job_spec_download_docx', job_id=job_id) }}" style="margin:0;">
+    <form method="post" action="{{ url_for('spec_bp.job_spec_download_docx', job_id=job_id) }}" style="margin:0;">
       <button type="submit" class="btn-primary">Download Word Doc</button>
     </form>
   </div>

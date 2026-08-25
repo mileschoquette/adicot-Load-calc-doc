@@ -17,7 +17,7 @@
     unlock the rest of the tabs.</p>
 
   <h3>Work Order</h3>
-  <form method="post" action="{{ url_for('job_star_save', job_id=job_id) }}" class="job-form" id="wo-form">
+  <form method="post" action="{{ url_for('job_lifecycle.job_star_save', job_id=job_id) }}" class="job-form" id="wo-form">
     {% for sec in wo_sections %}
       <section>
         <h4 style="margin-top:0;">{{ sec.title }}</h4>
@@ -65,7 +65,7 @@
 {% endif %}
 
 <h3>{{ "Re-parse" if parsed else "Parse" }}</h3>
-<form method="post" action="{{ url_for('job_parse', job_id=job_id) }}"
+<form method="post" action="{{ url_for('job_lifecycle.job_parse', job_id=job_id) }}"
       enctype="multipart/form-data" class="job-form" id="parse-form">
 
   {% if source == 'cms' %}

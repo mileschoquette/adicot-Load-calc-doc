@@ -4,12 +4,12 @@
 
 <div class="page-head">
   <h2>Temp Jobs</h2>
-  <form method="post" action="{{ url_for('new_temp') }}">
+  <form method="post" action="{{ url_for('job_lifecycle.new_temp') }}">
     <button type="submit" class="btn-primary">Run a Temp Job</button>
   </form>
 </div>
 <p class="muted">One-off runs from an HTML export, not linked to a CMS project.
-  CMS jobs live on the <a href="{{ url_for('index') }}">Jobs in CMS</a> page.</p>
+  CMS jobs live on the <a href="{{ url_for('dashboard.index') }}">Jobs in CMS</a> page.</p>
 
 {% if entries %}
   <table class="jobs">
@@ -24,11 +24,11 @@
     <tbody>
       {% for e in entries %}
         <tr>
-          <td><a href="{{ url_for('job_star', job_id=e.job_id) }}">{{ e.project_name }}</a></td>
+          <td><a href="{{ url_for('job_lifecycle.job_star', job_id=e.job_id) }}">{{ e.project_name }}</a></td>
           <td class="muted">{{ e.address }}</td>
           <td class="muted">{{ e.mtime }}</td>
           <td>
-            <form method="post" action="{{ url_for('delete_job', job_id=e.job_id) }}"
+            <form method="post" action="{{ url_for('dashboard.delete_job', job_id=e.job_id) }}"
                   style="display:inline" onsubmit="return confirm('Delete this job?')">
               <button type="submit" class="danger-link">delete</button>
             </form>

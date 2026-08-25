@@ -14,11 +14,10 @@ the existing single-worker web service rather than a separate Render Cron
 Job, since a separate Cron Job resource can't mount the same persistent disk
 this app keeps job_stages.json / qbo_invoices_*.json on.
 
-send_daily_digest() does a deferred `import app` (not a top-level import) to
-avoid a circular import: app.py imports this module at load time to start
-the scheduler thread, so app.py must finish loading first. By the time the
-scheduler actually fires (long after app.py is fully loaded), the deferred
-import is just a sys.modules cache hit.
+Pulls _build_cms_entries()/_entry_bucket()/_BUCKET_RANK from core.py (not
+app.py) — core.py has no dependency on this module, so this is a plain
+top-level import with no circular-import risk, unlike the old deferred
+`import app` this replaced when app.py was split into blueprints.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import calendar_utils
+import core
 from integrations import email_client
 
 log = logging.getLogger(__name__)
@@ -166,14 +166,12 @@ def send_daily_digest() -> bool:
     PERSON_EMAILS, each with the full shared list plus their own "Your tasks"
     section if they have any assignments. Returns True only if every send
     succeeded."""
-    import app  # deferred: app.py is fully loaded by the time this runs
-
-    entries = app._build_cms_entries()
+    entries = core._build_cms_entries()
     for e in entries:
-        e["bucket"] = app._entry_bucket(e)
+        e["bucket"] = core._entry_bucket(e)
     included = [e for e in entries if e["bucket"] not in EXCLUDED_BUCKETS]
     included.sort(key=lambda e: (
-        app._BUCKET_RANK.get(e["bucket"], 99),
+        core._BUCKET_RANK.get(e["bucket"], 99),
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
 

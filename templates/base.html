@@ -9,12 +9,12 @@
 <body>
   <header>
     <div class="container">
-      <h1><a href="{{ url_for('index') }}">HVAC Loads PDF Pipeline</a></h1>
+      <h1><a href="{{ url_for('dashboard.index') }}">HVAC Loads PDF Pipeline</a></h1>
       <nav>
-        <a href="{{ url_for('index') }}">Jobs (CMS)</a>
-        <a href="{{ url_for('calendar_page') }}">Calendar</a>
-        <a href="{{ url_for('past_jobs') }}">Temp Jobs</a>
-        <a href="{{ url_for('quickbooks_admin') }}">QuickBooks</a>
+        <a href="{{ url_for('dashboard.index') }}">Jobs (CMS)</a>
+        <a href="{{ url_for('dashboard.calendar_page') }}">Calendar</a>
+        <a href="{{ url_for('dashboard.past_jobs') }}">Temp Jobs</a>
+        <a href="{{ url_for('quickbooks.quickbooks_admin') }}">QuickBooks</a>
       </nav>
     </div>
   </header>

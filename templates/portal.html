@@ -184,7 +184,7 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
     </div>
   </div>
   {% else %}
-  <form method="post" action="{{ url_for('portal', token=token) }}" id="portalForm">
+  <form method="post" action="{{ url_for('job_lifecycle.portal', token=token) }}" id="portalForm">
   <div class="two-panel">
   <div class="panel-left">
     <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Proposal</div><div class="divider-line"></div></div>
