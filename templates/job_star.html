@@ -24,7 +24,18 @@
         {% for row in sec.rows %}
           <div class="field">
             <label for="wo-{{ row.key }}">{{ row.label }}</label>
-            <input type="text" name="{{ row.key }}" id="wo-{{ row.key }}" value="{{ row.value }}">
+            {% if row.options %}
+              {% set is_listed = row.value in row.options %}
+              <select id="wo-{{ row.key }}-picker" onchange="woPick('{{ row.key }}')">
+                <option value="" {% if not row.value %}selected{% endif %}>— Select —</option>
+                {% for opt in row.options %}<option value="{{ opt }}" {% if row.value == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}
+                <option value="__other__" {% if row.value and not is_listed %}selected{% endif %}>Other (type your own)</option>
+              </select>
+              <input type="text" name="{{ row.key }}" id="wo-{{ row.key }}" value="{{ row.value }}"
+                     style="{{ '' if row.value and not is_listed else 'display:none' }}">
+            {% else %}
+              <input type="text" name="{{ row.key }}" id="wo-{{ row.key }}" value="{{ row.value }}">
+            {% endif %}
             {% if row.kind == 'link' and row.value %}
               <small><a href="{{ row.value }}" target="_blank" rel="noopener">open current link</a></small>
             {% endif %}
@@ -157,6 +168,12 @@
 </div>
 
 <script>
+function woPick(key) {
+  const sel = document.getElementById('wo-' + key + '-picker');
+  const txt = document.getElementById('wo-' + key);
+  if (sel.value === '__other__') { txt.style.display = ''; txt.focus(); }
+  else { txt.value = sel.value; txt.style.display = 'none'; }
+}
 (function () {
   const cmsItemId = {{ job_id|tojson }};
   const useDrive = document.getElementById("use_drive_file");

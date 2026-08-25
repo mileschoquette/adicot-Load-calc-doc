@@ -969,7 +969,6 @@ _WORK_ORDER_SECTIONS = [
         ("Community", "community"),
         ("Subdivision", "subdivision"),
         ("Location Disambig", "locationDisambig"),
-        ("Lennar Job No", ["lennarJobNo", "lennarJobNumber"]),
         ("Engagement Days", "engagementDays"),
         ("Review Complete", "reviewComplete"),
         ("Signed Date", "signedDate"),
@@ -1073,6 +1072,51 @@ _WORK_ORDER_SECTIONS = [
     ]),
 ]
 
+_US_STATES = [
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
+    "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
+    "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
+    "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+    "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+]
+
+# Option lists for job_star.html's admin dropdowns. The 19 non-boolean
+# entries are copied verbatim from portal.html's own <select> lists (the
+# client-facing intake form) so both pages offer the same choices. Booleans
+# use Yes/No since _work_order_sections() already renders bool values that
+# way. Every field not listed here stays a plain text input.
+_FIELD_OPTIONS = {
+    "buildingStatus": ["Tenant Buildout", "New Construction", "New Addition", "Renovation"],
+    "orientation": ["North", "Northeast", "East", "Southeast", "South", "Southwest", "West", "Northwest"],
+    "deckType": ["Steel deck", "Concrete deck", "Wood deck", "Metal frame", "Wood frame", "Other"],
+    "roofCover": ["TPO", "EPDM", "BUR/Modified bitumen", "Metal", "Tile", "Shingle", "Other"],
+    "roofColor": ["Light", "Medium", "Dark"],
+    "suspCeiling": ["Suspended ACT (T-bar)", "GWB", "Open to structure",
+                    "Conditioned space above — no roof load", "Other"],
+    "atticCond": ["Sealed/conditioned plenum", "Vented attic", "None (flat roof)", "Other"],
+    "wallFinish": ["Stucco", "EIFS", "Brick", "Metal panel", "Other"],
+    "wallConstruction": ["CMU", "CMU + rigid insul", "ICF", "Steel stud + batt",
+                          "Steel stud + rigid insul", "Wood frame", "Other"],
+    "wallColor": ["Light", "Medium", "Dark"],
+    "partConstruction": ["NA", "Metal stud (steel frame)", "Wood stud", "Concrete Block / CMU"],
+    "floorType": ["Slab on grade", "Floor over conditioned space", "Floor over unconditioned space",
+                  "Wood frame over unconditioned space", "Elevated / exterior exposure"],
+    "doorType": ["Insulated Metal", "Hollow metal", "Solid wood", "Storefront/glass", "None"],
+    "occupancyType": ["Dining / Fast food", "Food prep / Kitchen", "Office", "Retail", "Medical office",
+                       "Assembly / Classrooms", "Warehouse", "Residential", "Other"],
+    "infiltration": ["Tight", "Average", "Loose"],
+    "acNewExisting": ["New", "Existing — reuse", "Mix of both"],
+    "acMounting": ["Ground-level slab", "Rooftop", "Sidewall", "Other"],
+    "hvacType": ["Split", "Package", "Mini-split", "VRF", "PTAC", "Other"],
+    "heatType": ["Heat Pump", "Heat Strip", "Gas Furnace", "Other"],
+    "hasOutsideAir": ["Yes", "No"],
+    "hasExhaust": ["Yes", "No"],
+    "hasStrip": ["Yes", "No"],
+    "reviewComplete": ["Yes", "No"],
+    "skylights": ["Yes", "No"],
+    "projectState": _US_STATES,
+}
+
 # Sections worth asking the client about in the "Save & Send to Client" draft
 # email's missing-info block. Excludes CRM/identity fields (Project & Client),
 # free-text notes, and internal Drive/snippet links — none of those are
@@ -1123,7 +1167,8 @@ def _work_order_sections(snapshot: Optional[dict], include_empty: bool = False) 
                     kind = "text"
                 if display:
                     has_value = True
-            rows.append({"label": label, "value": display, "kind": kind, "key": canonical_key})
+            rows.append({"label": label, "value": display, "kind": kind, "key": canonical_key,
+                         "options": _FIELD_OPTIONS.get(canonical_key)})
         if has_value or include_empty:
             sections.append({"title": title, "rows": rows})
     return sections
