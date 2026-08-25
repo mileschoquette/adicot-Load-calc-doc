@@ -194,7 +194,7 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       <div class="proposal-meta">
         <div class="meta-item"><div class="meta-label">Prepared For</div><div class="meta-value">{{ job.clientName or '' }}{% if job.clientCompany %} &middot; {{ job.clientCompany }}{% endif %}{% if not job.clientName and not job.clientCompany %}&#8212;{% endif %}</div></div>
         <div class="meta-item"><div class="meta-label">Property Owner</div><div class="meta-value">{{ job.propertyOwner or job.owner or '&#8212;' }}</div></div>
-        <div class="meta-item"><div class="meta-label">Project Address</div><div class="meta-value" id="projectAddress">{{ job.projectAddress or '&#8212;' }}</div></div>
+        <div class="field-row"><label class="field-label">Project Address</label><input class="field-input" type="text" name="projectAddress" value="{{ job.projectAddress or '' }}"></div>
         <div class="two-col">
           <div class="field-row"><label class="field-label">City</label><input class="field-input" type="text" name="projectCity" value="{{ job.projectCity or '' }}"></div>
           <div class="field-row"><label class="field-label">State</label><input class="field-input" type="text" name="projectState" id="inputProjectState" value="{{ job.projectState or '' }}" maxlength="2" style="text-transform:uppercase" oninput="updateStatuteText()"></div>
@@ -203,7 +203,10 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
           <div class="field-row"><label class="field-label">Zip</label><input class="field-input" type="text" name="projectZip" value="{{ job.projectZip or '' }}"></div>
           <div class="field-row"><label class="field-label">County</label><input class="field-input" type="text" name="projectCounty" value="{{ job.projectCounty or '' }}"></div>
         </div>
-        <div class="meta-item"><div class="meta-label">Contact</div><div class="meta-value" style="font-size:12px">{{ job.clientEmail or '' }}{% if job.clientEmail and job.clientPhone %} &middot; {% endif %}{{ job.clientPhone or '' }}{% if not job.clientEmail and not job.clientPhone %}&#8212;{% endif %}</div></div>
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">Email</label><input class="field-input" type="email" name="clientEmail" value="{{ job.clientEmail or '' }}"></div>
+          <div class="field-row"><label class="field-label">Phone</label><input class="field-input" type="text" name="clientPhone" value="{{ job.clientPhone or '' }}"></div>
+        </div>
         <div class="meta-item"><div class="meta-label">Service</div><div class="meta-value">{{ job.productService or '&#8212;' }}</div></div>
         <div class="meta-item"><div class="meta-label">Approx. Area</div><div class="meta-value">{{ (job.sf ~ ' SF') if job.sf else '&#8212;' }}</div></div>
         <div class="meta-item"><div class="meta-label">Quote Date</div><div class="meta-value" id="proposalDate">&#8212;</div><div style="font-size:10px;color:var(--light);margin-top:2px">Valid for 30 days</div></div>
