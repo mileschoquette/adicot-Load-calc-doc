@@ -237,7 +237,7 @@ const SHEET_COLUMNS = [
   "clientPhone", "productService", "clientCode", "subClient", "community",
   "subdivision", "locationDisambig", "lennarJobNo", "engagementDays",
   "buildingStatus", "sf", "occupants", "orientation", "indoorTemp",
-  "indoorRH", "weatherData", "deckType", "roofCover", "roofColor",
+  "indoorRH", "weatherStation", "deckType", "roofCover", "roofColor",
   "roofRValue", "insulPosition", "suspCeiling", "atticCond", "ceilingHeight",
   "wallFinish", "wallConstruction", "wallColor", "wallRValue", "wallHeight",
   "partConstruction", "partRValue", "floorType", "floorRValue", "glassU",
@@ -253,9 +253,10 @@ const SHEET_COLUMNS = [
   "snippetGlassValues", "snippetCeilingHeight", "snippetLightingWsf",
   "snippetProjectAddress",
   "projectCity", "projectState", "projectZip", "projectCounty",
-  "siteLatitude", "siteElevation", "numStories",
+  "latitude", "elevation", "numStories",
   "extLightDescription", "extLightCategory", "extLightNumLuminaires",
   "extLightWattsPerLuminaire", "extLightAreaLengthUnits", "extLightControlType",
+  "osaLowDry", "osaDailyRange",
 ];
 
 function _getProjectsSheet() {
@@ -2092,7 +2093,7 @@ function notifyProjectsSheet(data, sheetRowIndex) {
       sf: data.sf || 0,
       description: data.description || "",
       projectFolder: data.projectFolder || "",
-      weatherData: data.weatherData || "",
+      weatherStation: data.weatherData || "",
 
       buildingStatus: data.buildingStatus || "",
       occupancyType: data.occupancyType || "",

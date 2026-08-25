@@ -34,7 +34,7 @@
     <span class="tab disabled" title="Parse the job to enable">Equipment</span>
     <span class="tab disabled" title="Parse the job to enable">Quality Check</span>
   {% endif %}
-  {% if meta.get('source') == 'cms' or meta.get('wix_item_id') %}
+  {% if meta.get('source') == 'cms' or meta.get('cms_item_id') %}
     <a class="tab {% if active_tab == 'invoice' %}active{% endif %}"
        href="{{ url_for('job_invoice', job_id=job_id) }}">Invoice</a>
   {% endif %}

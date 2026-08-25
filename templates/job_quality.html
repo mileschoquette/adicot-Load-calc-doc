@@ -7,7 +7,7 @@
 {% block content %}
   {% include "_tabs.html" %}
 
-  {% set snap = meta.wix_snapshot or {} %}
+  {% set snap = meta.cms_snapshot or {} %}
 
   <section class="job-header">
     <h2>Quality Check — {{ meta.project_name }}</h2>
@@ -41,7 +41,7 @@
         </tbody>
       </table>
     </div>
-  {% elif meta.wix_item_id %}
+  {% elif meta.cms_item_id %}
     <div class="wix-ok-banner"><p>✓ All checked fields agree with Wix.</p></div>
   {% else %}
     <p class="muted">No Wix project linked — envelope/spec validation was skipped for this job.</p>

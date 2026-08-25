@@ -62,7 +62,7 @@
     </ul>
 
     <button type="submit" class="btn-secondary">Regenerate PDFs &amp; Upload Selected to Drive</button>
-    <span class="muted">Overwrites existing files{% if wix_job_no %} and uploads the checked files to Drive{% endif %}.</span>
+    <span class="muted">Overwrites existing files{% if cms_job_no %} and uploads the checked files to Drive{% endif %}.</span>
   </form>
 
   {% if drive_push %}
@@ -108,9 +108,9 @@
 {% else %}
   <p class="muted">
     Not generated yet. Review the preview above, adjust settings below if needed, then generate.
-    {% if wix_job_no %}
+    {% if cms_job_no %}
       PDFs will also be pushed to
-      <code>1-job/{{ wix_job_no.split("-", 1)[0] }}/{{ wix_job_no }}/6-Submit/</code> on Google Drive.
+      <code>1-job/{{ cms_job_no.split("-", 1)[0] }}/{{ cms_job_no }}/6-Submit/</code> on Google Drive.
     {% endif %}
   </p>
   <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}">
@@ -192,8 +192,8 @@
     {% set _tcfm = meta.get('config', {}).get('toilet_exhaust_cfm') %}
     <tr><th>Toilet exhaust CFM</th><td>{{ _tcfm | int if _tcfm is not none else "—" }}</td></tr>
     <tr><th>Bldg exhaust = all toilet</th><td>{{ "Yes" if meta.config.bldg_exhaust_all_toilet else "No" }}</td></tr>
-    {% if meta.wix_item_id %}
-      <tr><th>Wix project</th><td><code>{{ meta.wix_item_id }}</code></td></tr>
+    {% if meta.cms_item_id %}
+      <tr><th>CMS project</th><td><code>{{ meta.cms_item_id }}</code></td></tr>
     {% endif %}
     {% if meta.html_name %}
       <tr><th>Source HTML</th><td><code>{{ meta.html_name }}</code></td></tr>

@@ -339,12 +339,16 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       </div>
       <div class="field-row"><label class="field-label">Primary Orientation (main facade faces)</label><select class="field-input" name="orientation" id="inputOrientation"><option value="">Select&#8230;</option>{% for opt in ['North','Northeast','East','Southeast','South','Southwest','West','Northwest'] %}<option value="{{ opt }}" {% if job.orientation == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">Weather Station</label><input class="field-input" type="text" name="weatherData" value="{{ job.weatherData or '' }}"></div>
+        <div class="field-row"><label class="field-label">Weather Station</label><input class="field-input" type="text" name="weatherStation" value="{{ job.weatherStation or '' }}"></div>
         <div class="field-row"><label class="field-label">Number of Stories</label><input class="field-input" type="text" name="numStories" value="{{ job.numStories or '' }}"></div>
       </div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">Site Latitude</label><input class="field-input" type="text" name="siteLatitude" value="{{ job.siteLatitude or '' }}"></div>
-        <div class="field-row"><label class="field-label">Site Elevation</label><input class="field-input" type="text" name="siteElevation" value="{{ job.siteElevation or '' }}"></div>
+        <div class="field-row"><label class="field-label">Site Latitude</label><input class="field-input" type="text" name="latitude" value="{{ job.latitude or '' }}"></div>
+        <div class="field-row"><label class="field-label">Site Elevation</label><input class="field-input" type="text" name="elevation" value="{{ job.elevation or '' }}"></div>
+      </div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Winter Design Dry-Bulb</label><input class="field-input" type="text" name="osaLowDry" value="{{ job.osaLowDry or '' }}"></div>
+        <div class="field-row"><label class="field-label">Summer Mean Daily Range</label><input class="field-input" type="text" name="osaDailyRange" value="{{ job.osaDailyRange or '' }}"></div>
       </div>
     </div>
 
