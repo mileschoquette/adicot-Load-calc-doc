@@ -30,10 +30,31 @@ import base64
 import json
 import logging
 import os
+import re
 from email.message import EmailMessage
+from html import escape
 from typing import Optional
 
 log = logging.getLogger(__name__)
+
+_URL_RE = re.compile(r"https?://[^\s<]+")
+
+
+def _plain_to_html(text: str) -> str:
+    """Turn a plain-text body into an HTML equivalent with real <a href>
+    links. Gmail's compose/draft EDITOR (unlike its read view for a received
+    message) does not auto-linkify bare URLs in plain text, so a draft built
+    with only a text/plain part shows the link as dead text until it's sent.
+    Building a text/html alternative with an actual anchor tag makes it
+    clickable in the draft itself, not just after sending."""
+    escaped = escape(text, quote=False)   # neutralize <, >, & in the original text first
+
+    def _link(m: "re.Match") -> str:
+        url = m.group(0)   # already-escaped URL text — safe to embed as-is
+        return f'<a href="{url}">{url}</a>'
+
+    linked = _URL_RE.sub(_link, escaped)
+    return linked.replace("\n", "<br>")
 
 _SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
 
@@ -100,7 +121,8 @@ def create_draft(to: list[str], subject: str, body: str,
     msg["To"] = ", ".join(to)
     msg["From"] = sender
     msg["Subject"] = subject
-    msg.set_content(body)
+    msg.set_content(body)                                    # text/plain part
+    msg.add_alternative(_plain_to_html(body), subtype="html") # text/html part with real <a href> links
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
 
     try:
