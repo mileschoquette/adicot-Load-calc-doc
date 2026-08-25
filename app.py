@@ -1071,6 +1071,15 @@ _WORK_ORDER_SECTIONS = [
     ]),
 ]
 
+# Sections worth asking the client about in the "Save & Send to Client" draft
+# email's missing-info block. Excludes CRM/identity fields (Project & Client),
+# free-text notes, and internal Drive/snippet links — none of those are
+# something the client can usefully fill in on request.
+_EMAIL_MISSING_INFO_SECTIONS = {
+    "Building Basics", "Roof & Ceiling", "Walls, Floor & Glass",
+    "Internal Loads", "HVAC System", "Water Heating", "Exterior Lighting",
+}
+
 
 def _wo_lookup(snap: dict, key):
     """Return the snapshot value for a field key (or first present of a list)."""
@@ -1116,6 +1125,26 @@ def _work_order_sections(snapshot: Optional[dict], include_empty: bool = False) 
         if has_value or include_empty:
             sections.append({"title": title, "rows": rows})
     return sections
+
+
+def _missing_info_block(record: dict) -> str:
+    """Plain-text, section-grouped bullet list of empty client-facing fields,
+    for the 'Save & Send to Client' draft email. Empty string if nothing's
+    missing."""
+    lines = []
+    for sec in _work_order_sections(record, include_empty=True):
+        if sec["title"] not in _EMAIL_MISSING_INFO_SECTIONS:
+            continue
+        missing = [row["label"] for row in sec["rows"] if not row["value"]]
+        if missing:
+            lines.append(f"{sec['title']}:")
+            lines.extend(f"- {label}" for label in missing)
+            lines.append("")
+    if not lines:
+        return ""
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "A few things we still need from you:\n\n" + "\n".join(lines) + "\n\n"
 
 
 @app.route("/job/new-temp", methods=["POST"])
@@ -1227,13 +1256,17 @@ def job_star_save(job_id: str):
         token = portal_tokens.make_token(job_id, PORTAL_TOKEN_SECRET, days_valid=180)
         base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
         portal_url = f"{base}/portal/{token}"
+        merged = {**record, **fields}
+        missing_block = _missing_info_block(merged)
         subject = (f"Your Adicot project specifications: "
                    f"{record.get('projectAddress') or record.get('title') or job_id}")
         body = (
             f"Hi {record.get('clientName') or ''},\n\n"
             "Please review and complete your project specifications, then sign to authorize "
             f"Adicot to begin work:\n\n{portal_url}\n\n"
-            "This link is valid for 180 days.\n\nThanks,\nAdicot, Inc."
+            "This link is valid for 180 days.\n\n"
+            f"{missing_block}"
+            "Thanks,\nAdicot, Inc."
         )
         # Creates a real Gmail draft, never auto-sends — a human opens Gmail
         # and clicks Send. See gmail_client.py for the domain-wide-delegation
