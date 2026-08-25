@@ -92,6 +92,10 @@ SHEET_COLUMNS = [
     "driveFolderId", "snippetRoofRValue", "snippetWallConstruction",
     "snippetGlassValues", "snippetCeilingHeight", "snippetLightingWsf",
     "snippetProjectAddress",
+    "projectCity", "projectState", "projectZip", "projectCounty",
+    "siteLatitude", "siteElevation", "numStories",
+    "extLightDescription", "extLightCategory", "extLightNumLuminaires",
+    "extLightWattsPerLuminaire", "extLightAreaLengthUnits", "extLightControlType",
 ]
 _COL_INDEX = {name: i for i, name in enumerate(SHEET_COLUMNS)}
 

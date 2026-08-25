@@ -195,6 +195,14 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
         <div class="meta-item"><div class="meta-label">Prepared For</div><div class="meta-value">{{ job.clientName or '' }}{% if job.clientCompany %} &middot; {{ job.clientCompany }}{% endif %}{% if not job.clientName and not job.clientCompany %}&#8212;{% endif %}</div></div>
         <div class="meta-item"><div class="meta-label">Property Owner</div><div class="meta-value">{{ job.propertyOwner or job.owner or '&#8212;' }}</div></div>
         <div class="meta-item"><div class="meta-label">Project Address</div><div class="meta-value" id="projectAddress">{{ job.projectAddress or '&#8212;' }}</div></div>
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">City</label><input class="field-input" type="text" name="projectCity" value="{{ job.projectCity or '' }}"></div>
+          <div class="field-row"><label class="field-label">State</label><input class="field-input" type="text" name="projectState" id="inputProjectState" value="{{ job.projectState or '' }}" maxlength="2" style="text-transform:uppercase" oninput="updateStatuteText()"></div>
+        </div>
+        <div class="two-col">
+          <div class="field-row"><label class="field-label">Zip</label><input class="field-input" type="text" name="projectZip" value="{{ job.projectZip or '' }}"></div>
+          <div class="field-row"><label class="field-label">County</label><input class="field-input" type="text" name="projectCounty" value="{{ job.projectCounty or '' }}"></div>
+        </div>
         <div class="meta-item"><div class="meta-label">Contact</div><div class="meta-value" style="font-size:12px">{{ job.clientEmail or '' }}{% if job.clientEmail and job.clientPhone %} &middot; {% endif %}{{ job.clientPhone or '' }}{% if not job.clientEmail and not job.clientPhone %}&#8212;{% endif %}</div></div>
         <div class="meta-item"><div class="meta-label">Service</div><div class="meta-value">{{ job.productService or '&#8212;' }}</div></div>
         <div class="meta-item"><div class="meta-label">Approx. Area</div><div class="meta-value">{{ (job.sf ~ ' SF') if job.sf else '&#8212;' }}</div></div>
@@ -327,6 +335,14 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
         <div class="field-row"><label class="field-label">Total Occupants</label><input class="field-input" type="text" name="occupants" id="inputOccupants" placeholder="e.g. 43" value="{{ job.occupants or '' }}"></div>
       </div>
       <div class="field-row"><label class="field-label">Primary Orientation (main facade faces)</label><select class="field-input" name="orientation" id="inputOrientation"><option value="">Select&#8230;</option>{% for opt in ['North','Northeast','East','Southeast','South','Southwest','West','Northwest'] %}<option value="{{ opt }}" {% if job.orientation == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Weather Station</label><input class="field-input" type="text" name="weatherData" value="{{ job.weatherData or '' }}"></div>
+        <div class="field-row"><label class="field-label">Number of Stories</label><input class="field-input" type="text" name="numStories" value="{{ job.numStories or '' }}"></div>
+      </div>
+      <div class="two-col">
+        <div class="field-row"><label class="field-label">Site Latitude</label><input class="field-input" type="text" name="siteLatitude" value="{{ job.siteLatitude or '' }}"></div>
+        <div class="field-row"><label class="field-label">Site Elevation</label><input class="field-input" type="text" name="siteElevation" value="{{ job.siteElevation or '' }}"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -418,6 +434,18 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-header"><div class="card-title">Exterior Lighting</div></div>
+      <div class="field-row"><label class="field-label">Description</label><input class="field-input" type="text" name="extLightDescription" value="{{ job.extLightDescription or '' }}"></div>
+      <div class="field-row"><label class="field-label">Category</label><input class="field-input" type="text" name="extLightCategory" value="{{ job.extLightCategory or '' }}"></div>
+      <div class="three-col">
+        <div class="field-row"><label class="field-label">Number of Luminaires</label><input class="field-input" type="text" name="extLightNumLuminaires" value="{{ job.extLightNumLuminaires or '' }}"></div>
+        <div class="field-row"><label class="field-label">Watts per Luminaire</label><input class="field-input" type="text" name="extLightWattsPerLuminaire" value="{{ job.extLightWattsPerLuminaire or '' }}"></div>
+        <div class="field-row"><label class="field-label">Area / Length / Units</label><input class="field-input" type="text" name="extLightAreaLengthUnits" value="{{ job.extLightAreaLengthUnits or '' }}"></div>
+      </div>
+      <div class="field-row"><label class="field-label">Control Type</label><input class="field-input" type="text" name="extLightControlType" value="{{ job.extLightControlType or '' }}"></div>
+    </div>
+
   </div><!-- /panel-right -->
   </div><!-- /two-panel -->
   </form>
@@ -466,9 +494,8 @@ function updateOccDefaults() {
   show('kitchenExhSection', FOOD_SVC.includes(el.value));
 }
 function getProjectState() {
-  const addr = (document.getElementById('projectAddress') && document.getElementById('projectAddress').textContent) || '';
-  const m = addr.match(/,\s*([A-Z]{2})\s+\d{5}/);
-  return m ? m[1] : '';
+  const el = document.getElementById('inputProjectState');
+  return ((el && el.value) || '').trim().toUpperCase();
 }
 function updateStatuteText() {
   const state = getProjectState();

@@ -252,6 +252,10 @@ const SHEET_COLUMNS = [
   "driveFolderId", "snippetRoofRValue", "snippetWallConstruction",
   "snippetGlassValues", "snippetCeilingHeight", "snippetLightingWsf",
   "snippetProjectAddress",
+  "projectCity", "projectState", "projectZip", "projectCounty",
+  "siteLatitude", "siteElevation", "numStories",
+  "extLightDescription", "extLightCategory", "extLightNumLuminaires",
+  "extLightWattsPerLuminaire", "extLightAreaLengthUnits", "extLightControlType",
 ];
 
 function _getProjectsSheet() {
