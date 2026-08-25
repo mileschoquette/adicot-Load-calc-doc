@@ -1342,7 +1342,7 @@ def _portal_code_checks(record: dict) -> dict:
 @app.route("/portal/<token>", methods=["GET", "POST"])
 def portal(token: str):
     """Client-facing work order / proposal / e-signature page — replaces Wix's
-    admin-review.html (client mode) and the Wix Members magic-link login. The
+    admin-review.html (client mode, see archive/admin-review.html) and the Wix Members magic-link login. The
     signed token IS the authentication; this route is deliberately NOT behind
     @_require_auth, matching the header comment in templates/portal.html."""
     job_id = portal_tokens.verify_token(token, PORTAL_TOKEN_SECRET or "")

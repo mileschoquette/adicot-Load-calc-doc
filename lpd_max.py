@@ -3,12 +3,12 @@
 Source: Florida Building Code, Energy Conservation (FBC-EC 2023, 8th ed.), which
 adopts the ASHRAE 90.1-2019 space-by-space method for commercial lighting power
 allowances. These are the same values already embedded as display strings in
-admin-review.html's LIGHTING_MAXES table (verified 2026-06-19) — kept here as a
+archive/admin-review.html's LIGHTING_MAXES table (verified 2026-06-19) — kept here as a
 single numeric source of truth so the Flask-side portal can compute the same
 code-max badge server-side instead of duplicating the table in JS.
 
 Keyed by the exact "Occupancy Type" dropdown option strings used across the app
-(admin-review.html, templates/portal.html). "Residential" and "Other" have no
+(archive/admin-review.html, templates/portal.html). "Residential" and "Other" have no
 FBC-EC space-by-space entry in the source table and intentionally resolve to
 None — the calling code should skip the badge rather than guess a value.
 
