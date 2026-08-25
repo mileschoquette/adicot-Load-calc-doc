@@ -467,10 +467,10 @@ function createProjectFolder(clientCode, subClient, locationDisambig) {
 function _sendAdminReviewEmail(data, projectId) {
   var jobNo   = data.jobNo || '';
   var subject = '✉️ Review: ' + jobNo + ' · ' + (data.projectFolder || data.projectName || 'New Project');
-  var reviewUrl = ADMIN_REVIEW_PAGE_URL
-    + '?id='    + encodeURIComponent(projectId || '')
-    + '&jobNo=' + encodeURIComponent(jobNo)
-    + '&mode=admin';
+  // Points at the Flask app's own work-order tab (Render), not the retired Wix
+  // admin-review page — projectId here is the Sheets row _id notifyProjectsSheet()
+  // minted, which /job/<id>/star already knows how to load via sheets_client.
+  var reviewUrl = PORTAL_BASE_URL + '/job/' + encodeURIComponent(projectId || '') + '/star';
 
   var html  = _buildAdminNotificationHtml(data, reviewUrl);
   var plain = _adminNotifyPlain(data, reviewUrl);
@@ -1627,6 +1627,15 @@ function testLiveCrop() {
 }
 
 // ── CREATE CLIENT (PROPOSAL) GMAIL DRAFT ──────────────────────────────────────
+// LEGACY / DEAD ONCE CUTOVER COMPLETES: this function (and _buildClientPageLink,
+// _buildPortalLink, createQuestionsEmailDraft, and _handleSaveAndApprove below)
+// are only ever invoked via doPost's 'createProposal' / 'createQuestionsEmail' /
+// 'saveAndApprove' actions — which only the OLD Wix admin-review page's Velo
+// wrapper ever POSTs. Now that _sendAdminReviewEmail() and _buildAdminReviewLink()
+// point admins at /job/<id>/star on Render instead, nothing links to that Wix
+// page anymore, so nothing should be able to reach these functions in normal
+// operation. Left in place rather than deleted (smaller, safer diff) — the
+// equivalent flow now lives in Flask's job_star_save() + gmail_client.py.
 
 function createClientDraft(projectData, adminFields, clientFieldKeys) {
   try {
@@ -1655,12 +1664,11 @@ function createClientDraft(projectData, adminFields, clientFieldKeys) {
 }
 
 function _buildAdminReviewLink(data) {
-  var id    = data._id   || data.projectId || '';
-  var jobNo = data.jobNo || data.jobNumber || '';
-  var base  = ADMIN_REVIEW_PAGE_URL + '?mode=admin';
-  if (id)         base += '&id='    + encodeURIComponent(id);
-  else if (jobNo) base += '&jobNo=' + encodeURIComponent(jobNo);
-  return base;
+  // Points at the Flask app's /job/<id>/star (Render), not the retired Wix
+  // admin-review page. Unlike the old Wix page, this route is keyed only by
+  // the Sheets row _id — there's no jobNo-based fallback route to fall back to.
+  var id = data._id || data.projectId || '';
+  return PORTAL_BASE_URL + '/job/' + encodeURIComponent(id) + '/star';
 }
 
 function _buildClientPageLink(data, hasQuote) {
@@ -1977,17 +1985,35 @@ function postToSlack(message, blocks) {
 
 
 // ── CLIENT CODE REGISTRY ──────────────────────────────────────────────────────
+// Lives in a "Client Codes" tab of the same spreadsheet (SHEET_ID) — columns
+// clientCode, clientName, aliases — created automatically on first use.
+// Replaces the old Wix _functions/clientCodes + addClientCode endpoints.
 
+const CLIENT_CODES_TAB_NAME = "Client Codes";
 var _clientCodesCache = null;
+
+function _getClientCodesSheet() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(CLIENT_CODES_TAB_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CLIENT_CODES_TAB_NAME);
+    sheet.getRange(1, 1, 1, 3).setValues([["clientCode", "clientName", "aliases"]]);
+  }
+  return sheet;
+}
 
 function _getClientCodes() {
   if (_clientCodesCache) return _clientCodesCache;
   try {
-    var resp = UrlFetchApp.fetch(
-      'https://www.adicotengineeringinc.com/_functions/clientCodes',
-      { muteHttpExceptions: true }
-    );
-    _clientCodesCache = JSON.parse(resp.getContentText()) || [];
+    var sheet = _getClientCodesSheet();
+    var rows = sheet.getDataRange().getValues();
+    var codes = [];
+    for (var i = 1; i < rows.length; i++) {   // skip header row
+      var row = rows[i];
+      if (!row[0]) continue;
+      codes.push({ clientCode: row[0], clientName: row[1] || '', aliases: row[2] || '' });
+    }
+    _clientCodesCache = codes;
   } catch (err) {
     _logToSheet('_getClientCodes ERROR: ' + err.message);
     _clientCodesCache = [];
@@ -2006,17 +2032,11 @@ function _clientCodesPromptBlock() {
 
 function _addClientCode(clientCode, clientName, aliases) {
   try {
-    var resp = UrlFetchApp.fetch(
-      'https://www.adicotengineeringinc.com/_functions/addClientCode',
-      {
-        method: 'post', contentType: 'application/json',
-        payload: JSON.stringify({ clientCode: clientCode, clientName: clientName, aliases: aliases }),
-        muteHttpExceptions: true,
-      }
-    );
-    var r = JSON.parse(resp.getContentText());
+    var sheet = _getClientCodesSheet();
+    sheet.appendRow([clientCode, clientName || '', aliases || '']);
+    SpreadsheetApp.flush();
     _clientCodesCache = null;
-    return r.status === 'added';
+    return true;
   } catch (err) {
     _logToSheet('_addClientCode ERROR: ' + err.message);
     return false;
