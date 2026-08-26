@@ -4,7 +4,7 @@
 
 <div class="page-head">
   <h2>Jobs in CMS</h2>
-  <form method="post" action="{{ url_for('new_temp') }}">
+  <form method="post" action="{{ url_for('job_lifecycle.new_temp') }}">
     <button type="submit" class="btn-primary">Run a Temp Job</button>
   </form>
 </div>
@@ -53,10 +53,10 @@
                 data-stage="{{ p.stage or 'unset' }}"
                 data-bucket="{{ p.bucket }}">
               <td>
-                <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.job_no or "—" }}</a>
+                <a href="{{ url_for('job_lifecycle.job_star', job_id=p._id) }}">{{ p.job_no or "—" }}</a>
               </td>
               <td>
-                <a href="{{ url_for('job_star', job_id=p._id) }}">{{ p.address or p.title or "(untitled)" }}</a>
+                <a href="{{ url_for('job_lifecycle.job_star', job_id=p._id) }}">{{ p.address or p.title or "(untitled)" }}</a>
                 {% if p.address and p.title %}<div class="muted small">{{ p.title }}</div>{% endif %}
               </td>
               <td>

@@ -34,7 +34,7 @@
       {% endif %}
     </tbody>
   </table>
-  <form method="post" action="{{ url_for('quickbooks_disconnect') }}" style="margin-top:1.5rem;"
+  <form method="post" action="{{ url_for('quickbooks.quickbooks_disconnect') }}" style="margin-top:1.5rem;"
         onsubmit="return confirm('Disconnect from QuickBooks? You will need to reconnect to create invoices.')">
     <button type="submit" class="btn-secondary">Disconnect</button>
   </form>
@@ -43,7 +43,7 @@
     QuickBooks {{ status.environment }} company. You'll be sent to Intuit to approve,
     then returned here.</p>
   <p style="margin-top:1rem;">
-    <a class="btn-primary" href="{{ url_for('quickbooks_connect') }}">Connect to QuickBooks</a>
+    <a class="btn-primary" href="{{ url_for('quickbooks.quickbooks_connect') }}">Connect to QuickBooks</a>
   </p>
 {% endif %}
 

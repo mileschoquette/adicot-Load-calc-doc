@@ -16,7 +16,7 @@
 {% if meta.mismatches %}
   <div class="wix-mismatch-banner">
     <strong>⚠ Wix validation: {{ meta.mismatches|length }} mismatch{% if meta.mismatches|length != 1 %}es{% endif %}</strong>
-    — see the <a href="{{ url_for('job_quality', job_id=job_id) }}">Quality Check</a> tab for details.
+    — see the <a href="{{ url_for('quality.job_quality', job_id=job_id) }}">Quality Check</a> tab for details.
   </div>
 {% endif %}
 
@@ -30,7 +30,7 @@
 <h3>PDF Deliverables</h3>
 
 {% if meta.html_from_drive %}
-  <form method="post" action="{{ url_for('rescrape_html', job_id=job_id) }}"
+  <form method="post" action="{{ url_for('job_lifecycle.rescrape_html', job_id=job_id) }}"
         style="margin-bottom:1rem;"
         onsubmit="return confirm('Re-fetch the HTML from Google Drive and re-parse this job? Regenerate the PDFs afterward to apply the changes.')">
     <button type="submit" class="btn-secondary">↻ Re-scrape HTML from Drive</button>
@@ -41,7 +41,7 @@
 {% if pdfs %}
   <p class="muted">Click any file to download. Uncheck files below to skip uploading them to Drive, then regenerate.</p>
 
-  <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}">
+  <form method="post" action="{{ url_for('job_lifecycle.generate_pdfs', job_id=job_id) }}">
     <input type="hidden" name="has_selection" value="1">
     <div class="pdf-list-toolbar" style="display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem;">
       <label class="checkbox">
@@ -54,7 +54,7 @@
       {% for pdf in pdfs %}
         <li>
           <input type="checkbox" class="pdf-checkbox" name="files" value="{{ pdf.name }}" checked>
-          <a href="{{ url_for('download_file', job_id=job_id, filename=pdf.name) }}">{{ pdf.name }}</a>
+          <a href="{{ url_for('job_lifecycle.download_file', job_id=job_id, filename=pdf.name) }}">{{ pdf.name }}</a>
           <span class="muted">({{ pdf.size_kb }} KB)</span>
           {% if pdf.name.endswith("-Combined.pdf") %}<span class="badge">Combined</span>{% endif %}
         </li>
@@ -113,7 +113,7 @@
       <code>1-job/{{ cms_job_no.split("-", 1)[0] }}/{{ cms_job_no }}/6-Submit/</code> on Google Drive.
     {% endif %}
   </p>
-  <form method="post" action="{{ url_for('generate_pdfs', job_id=job_id) }}">
+  <form method="post" action="{{ url_for('job_lifecycle.generate_pdfs', job_id=job_id) }}">
     <button type="submit" class="btn-primary">Generate PDFs</button>
   </form>
 {% endif %}
@@ -122,7 +122,7 @@
 <h3 style="margin-top:2rem;">Project settings</h3>
 <p class="muted">Adjust these after parsing if needed, then click Commit &amp; regenerate to update the PDFs.</p>
 
-<form method="post" action="{{ url_for('commit_settings', job_id=job_id) }}" class="job-form">
+<form method="post" action="{{ url_for('job_lifecycle.commit_settings', job_id=job_id) }}" class="job-form">
 
   <section>
     <h4 style="margin-top:0;">Exhaust</h4>
@@ -202,7 +202,7 @@
 </table>
 
 <p class="actions" style="margin-top:2rem;">
-  <a href="{{ url_for('index') }}">← All jobs (CMS)</a>
+  <a href="{{ url_for('dashboard.index') }}">← All jobs (CMS)</a>
 </p>
 
 <template id="override-row-template">

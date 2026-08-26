@@ -5,8 +5,8 @@
 <div class="page-head">
   <h2>{{ month_start.strftime('%B %Y') }}</h2>
   <div>
-    <a class="btn-ghost" href="{{ url_for('calendar_page', month=prev_month) }}">&larr; Prev</a>
-    <a class="btn-ghost" href="{{ url_for('calendar_page', month=next_month) }}">Next &rarr;</a>
+    <a class="btn-ghost" href="{{ url_for('dashboard.calendar_page', month=prev_month) }}">&larr; Prev</a>
+    <a class="btn-ghost" href="{{ url_for('dashboard.calendar_page', month=next_month) }}">Next &rarr;</a>
     <button type="button" class="btn-primary" id="cal-add-btn">+ Add Event</button>
   </div>
 </div>
