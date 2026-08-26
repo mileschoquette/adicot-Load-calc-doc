@@ -72,7 +72,7 @@ def job_duct(job_id: str):
         })
 
     return render_template(
-        "job_duct.html",
+        "jobs/duct.html",
         active_tab="duct", job_id=job_id, meta=meta, supply_rows=rows,
     )
 
@@ -102,7 +102,7 @@ def job_quality(job_id: str):
     roof = roof_check.check_roof_area(report, meta.get("num_stories"))
 
     return render_template(
-        "job_quality.html",
+        "jobs/quality.html",
         active_tab="quality", job_id=job_id, meta=meta,
         checked=qc["checked"],
         flagged_count=len(flagged),
@@ -142,7 +142,7 @@ def job_charts(job_id: str):
     charts = _available_charts(job_dir)
     selected = meta.get("combined_charts") or []
     return render_template(
-        "job_charts.html",
+        "jobs/charts.html",
         active_tab="charts", job_id=job_id, meta=meta,
         charts=charts, selected=selected,
     )

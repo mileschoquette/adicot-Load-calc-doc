@@ -52,7 +52,7 @@ def index():
         (e["address"] or e["title"] or e["job_no"]).lower(),
     ))
     manual_tasks = _load_manual_tasks_registry()
-    return render_template("cms_jobs.html", projects=entries, manual_tasks=manual_tasks)
+    return render_template("dashboard.html", projects=entries, manual_tasks=manual_tasks)
 
 
 @dashboard.route("/job/<wix_id>/stage", methods=["POST"])
@@ -330,7 +330,7 @@ def past_jobs():
                 "mtime": datetime.datetime.fromtimestamp(
                     d.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
             })
-    return render_template("jobs.html", active_tab="jobs", job_id=None, entries=entries)
+    return render_template("temp_jobs.html", active_tab="jobs", job_id=None, entries=entries)
 
 
 @dashboard.route("/past-jobs")
