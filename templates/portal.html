@@ -29,8 +29,10 @@ Context this template assumes (all passed by the `portal` view):
   code_checks dict  — optional, keyed by field name; each value {max, label}.
                        Only "lightingWattsPerSF" is wired to a badge today.
                        Absent key => no badge rendered for that field.
-  signed      bool  — True after a successful submit; shows the locked
-                       success state instead of the form.
+  signed      bool  — True after a successful submit; shows a signed banner
+                       above the same work order, now rendered read-only
+                       (all inputs disabled, sign/save-progress controls
+                       hidden) instead of the editable form.
   token       str   — the current magic-link token; used to build the form's
                        POST action URL back to this same route.
 
@@ -172,10 +174,10 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
   </div>
 
   {% if signed %}
-  <div class="success-state" id="successState">
-    <div class="success-icon">&#10003;</div>
-    <div class="success-title">Agreement executed.</div>
-    <p class="success-sub">Your project specifications have been submitted and this project is now locked and in Adrienne&apos;s queue.<br/>You&apos;ll receive a confirmation email shortly.</p>
+  <div class="success-state" id="successState" style="padding:32px 0 24px">
+    <div class="success-icon" style="width:56px;height:56px;font-size:26px;margin-bottom:14px">&#10003;</div>
+    <div class="success-title" style="font-size:22px">Agreement executed.</div>
+    <p class="success-sub">This project is locked and in Adrienne&apos;s queue. You&apos;ll receive a confirmation email shortly. Your signed proposal and work order are shown below, read-only, for your reference.</p>
     <div class="next-steps">
       <div style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#9CA3AF;margin-bottom:10px">What happens next</div>
       <div class="next-step"><div class="step-num">1</div><span>Adrienne reviews your project specifications and confirms all information</span></div>
@@ -183,12 +185,16 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       <div class="next-step"><div class="step-num">3</div><span>Preliminary calculations begin once background drawings are confirmed</span></div>
     </div>
   </div>
-  {% else %}
+  {% endif %}
   <form method="post" action="{{ url_for('job_lifecycle.portal', token=token) }}" id="portalForm">
   <div class="two-panel">
   <div class="panel-left">
     <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Proposal</div><div class="divider-line"></div></div>
+    {% if signed %}
+    <div class="wo-intro" style="margin-bottom:20px">This proposal and work order have been signed and are locked. All fields below are read-only.</div>
+    {% else %}
     <div class="wo-intro" style="margin-bottom:20px">Please review your proposal and contract terms, then sign when ready.<button type="button" onclick="document.getElementById('sign-anchor').scrollIntoView({behavior:'smooth',block:'start'})" style="display:block;margin-top:10px;background:var(--orange);color:white;border:none;border-radius:6px;padding:8px 18px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.2px">Jump to Signature &#8595;</button></div>
+    {% endif %}
     <div class="card">
       <div class="card-header"><div class="card-title">Proposal</div><div class="card-tag">Version 1.0</div></div>
       <div class="proposal-meta">
@@ -249,6 +255,7 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       </div>
     </div>
 
+    {% if not signed %}
     <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Sign &amp; Submit</div><div class="divider-line"></div></div>
     <div class="card">
       <div class="card-header"><div class="card-title">Contract Terms</div></div>
@@ -323,12 +330,26 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       <button class="btn-save-progress" type="submit" name="action" value="save_progress">Save Progress</button>
       <button class="btn-sign" id="signButton" type="submit" name="action" value="sign" disabled>Sign &amp; Submit &#8594;</button>
     </div>
+    {% else %}
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Signed</div><div class="divider-line"></div></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Signature</div></div>
+      <div class="proposal-meta">
+        <div class="meta-item"><div class="meta-label">Signed By</div><div class="meta-value">{{ job.signedBy or '&#8212;' }}{% if job.signedTitle %} &middot; {{ job.signedTitle }}{% endif %}</div></div>
+        <div class="meta-item"><div class="meta-label">Signed On</div><div class="meta-value">{{ job.signedDate or '&#8212;' }}</div></div>
+      </div>
+    </div>
+    {% endif %}
     <button class="btn-print" type="button" onclick="window.print()">Print a copy of this form</button>
   </div><!-- /panel-left -->
 
   <div class="panel-right">
     <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Project Specifications</div><div class="divider-line"></div></div>
+    {% if signed %}
+    <div class="wo-intro">These are the project specifications you submitted. All fields below are locked.</div>
+    {% else %}
     <div class="wo-intro">Please review and complete the project specifications below. Don't have everything handy? Use <strong>Save Progress</strong> below to save what you've entered so far — this same link will bring you back to pick up where you left off.<button class="btn-save-progress" type="submit" name="action" value="save_progress" style="display:block;margin-top:10px">Save Progress</button></div>
+    {% endif %}
 
     <div class="card">
       <div class="card-header"><div class="card-title">Building Basics</div></div>
@@ -456,10 +477,10 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
   </div><!-- /panel-right -->
   </div><!-- /two-panel -->
   </form>
-  {% endif %}
 </div>
 
 <script>
+const IS_SIGNED = {{ 'true' if signed else 'false' }};
 function toggleTerms(id) {
   const box = document.getElementById(id);
   const real = document.getElementById(id + '-real');
@@ -526,6 +547,9 @@ document.addEventListener('DOMContentLoaded', () => {
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
   });
+  if (IS_SIGNED) {
+    document.querySelectorAll('#portalForm .field-input').forEach(el => { el.disabled = true; });
+  }
 });
 </script>
 </body>

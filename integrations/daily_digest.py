@@ -38,7 +38,7 @@ from integrations import email_client
 log = logging.getLogger(__name__)
 
 JOBS_DIR = Path(os.environ.get("JOBS_DIR", "./jobs"))
-PERSON_EMAILS = {"miles": "mfc@adicot.com", "adi": "agc@adicot.com", "phoebe": "pc@adicot.com"}
+PERSON_EMAILS = core.PERSON_EMAILS
 EXCLUDED_BUCKETS = {"invoiced", "expired"}
 SEND_HOUR = 7
 SEND_TZ = ZoneInfo("America/New_York")

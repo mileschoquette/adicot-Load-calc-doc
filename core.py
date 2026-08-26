@@ -110,6 +110,12 @@ _cms = sheets_client if USE_SHEETS_CMS else wix_client
 # project (AdicotProjects.gs mints tokens with the same value).
 PORTAL_TOKEN_SECRET = os.environ.get("PORTAL_TOKEN_SECRET")
 
+# ─── Internal staff email addresses (Miles/Adi/Phoebe) ───────────────
+# Shared by the daily digest and any other internal notification (e.g. the
+# client-signed alert in blueprints/job_lifecycle.py) so there's one place
+# to update if an address changes.
+PERSON_EMAILS = {"miles": "mfc@adicot.com", "adi": "agc@adicot.com", "phoebe": "pc@adicot.com"}
+
 
 def _require_auth(view):
     @functools.wraps(view)

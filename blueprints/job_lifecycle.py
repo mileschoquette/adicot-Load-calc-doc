@@ -21,6 +21,7 @@ from werkzeug.utils import secure_filename
 from hvac import hvac_pipeline as hp
 from hvac import lpd_max
 from hvac import validators
+from integrations import email_client
 from integrations import gdrive_client
 from integrations import gmail_client
 from integrations import portal_tokens
@@ -29,7 +30,7 @@ from pdf import html_pdf
 from pdf import pdf_combine
 
 from core import (
-    JOBS_DIR, PORTAL_TOKEN_SECRET, _cms, _extract_state_code, _is_parsed, _job_dir,
+    JOBS_DIR, PERSON_EMAILS, PORTAL_TOKEN_SECRET, _cms, _extract_state_code, _is_parsed, _job_dir,
     _load_invoice_registry, _load_meta, _num_or_default,
     _parse_and_persist, _render_preview, _require_auth, _require_parsed,
     _safe_job_path, _save_meta,
@@ -440,6 +441,21 @@ def _portal_code_checks(record: dict) -> dict:
     return checks
 
 
+def _notify_staff_signed(job_id: str, record: dict, signer_name: str, signer_title: str) -> None:
+    """Internal alert to Miles/Adi/Phoebe the moment a client signs — a
+    plain SMTP send (not a Gmail draft) since this is staff-only, not
+    client-facing, and doesn't need a human review step before it goes out."""
+    base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
+    job_label = record.get("title") or record.get("projectAddress") or job_id
+    subject = f"{job_label} — signed, now in queue"
+    body = (
+        f"{signer_name} ({signer_title}) just signed the work order for {job_label}.\n"
+        f"This job is now in queue.\n\n"
+        f"View: {base}/job/{job_id}/star"
+    )
+    email_client.send_email(list(PERSON_EMAILS.values()), subject, body)
+
+
 @job_lifecycle.route("/portal/<token>", methods=["GET", "POST"])
 def portal(token: str):
     """Client-facing work order / proposal / e-signature page — replaces Wix's
@@ -507,6 +523,7 @@ def portal(token: str):
         })
         _cms.update_project(job_id, posted_fields)
         record = _cms.get_project(job_id) or record
+        _notify_staff_signed(job_id, record, signer_name, signer_title)
         return render_template("portal.html", job=record, code_checks={}, signed=True, token=token)
 
     code_checks = {} if already_signed else _portal_code_checks(record)
