@@ -195,7 +195,7 @@ def job_spec(job_id: str):
     spec = spec_engine.build_spec(data, ctx, include_notes=False)
 
     return render_template(
-        "job_spec.html",
+        "jobs/spec.html",
         active_tab="spec", job_id=job_id, meta=meta,
         inputs=inputs, state=state, state_info=state_info,
         spec=spec, warnings=spec.warnings,

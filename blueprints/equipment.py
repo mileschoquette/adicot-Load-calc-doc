@@ -121,7 +121,7 @@ def job_equip(job_id: str):
     erv_conds = _erv_conditions_from_report(_load_report(job_id))
 
     return render_template(
-        "job_equip.html",
+        "jobs/equip.html",
         active_tab="equip", job_id=job_id, meta=meta,
         zones=zones,
         zone_names=[z["name"] for z in zones],
@@ -405,7 +405,7 @@ def job_equip_run(job_id: str):
         xlsx_name = None
 
     return render_template(
-        "job_equip.html",
+        "jobs/equip.html",
         active_tab="equip", job_id=job_id, meta=meta,
         zones=zones_display,
         zone_names=[z["name"] for z in zones_display],

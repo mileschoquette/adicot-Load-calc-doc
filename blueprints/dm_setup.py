@@ -259,7 +259,7 @@ def job_dm_setup(job_id: str):
 
     con = _dm_setup_construction(report, meta)
     return render_template(
-        "job_dm_setup.html",
+        "jobs/dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
         parsed=parsed, mass_options=_MASS_CLASS_OPTIONS,
         settings=_dm_setup_settings(meta, report),

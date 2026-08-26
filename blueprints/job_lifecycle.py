@@ -181,7 +181,7 @@ _US_STATES = [
     "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ]
 
-# Option lists for job_star.html's admin dropdowns. The 19 non-boolean
+# Option lists for jobs/star.html's admin dropdowns. The 19 non-boolean
 # entries are copied verbatim from portal.html's own <select> lists (the
 # client-facing intake form) so both pages offer the same choices. Booleans
 # use Yes/No since _work_order_sections() already renders bool values that
@@ -359,7 +359,7 @@ def job_star(job_id: str):
                    if source == "cms" else None)
 
     return render_template(
-        "job_star.html",
+        "jobs/star.html",
         active_tab="star", job_id=job_id, meta=meta,
         source=source, parsed=parsed, wo_sections=wo_sections,
     )
@@ -369,7 +369,7 @@ def job_star(job_id: str):
 @_require_auth
 def job_star_save(job_id: str):
     """Save admin edits to a CMS job's work order — this is what turns
-    job_star.html from a read-only mirror into the actual editable admin form.
+    jobs/star.html from a read-only mirror into the actual editable admin form.
     Collects every posted field into ONE dict and writes it in a single
     _cms.update_project() call, never one write per field. If the form's
     action is 'save_and_send', also mints a 180-day magic-link token and
@@ -540,7 +540,7 @@ def job_invoice(job_id: str):
     invoice = _load_invoice_registry().get(job_id)
 
     return render_template(
-        "job_invoice.html",
+        "jobs/invoice.html",
         active_tab="invoice", job_id=job_id, meta=meta,
         qbo_status=qbo.connection_status(), invoice=invoice,
     )
