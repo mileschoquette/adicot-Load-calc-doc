@@ -59,7 +59,6 @@ _WORK_ORDER_SECTIONS = [
         ("Zip", "projectZip"),
         ("County", "projectCounty"),
         ("Property Owner", "propertyOwner"),
-        ("Owner", "owner"),
         ("Client Name", "clientName"),
         ("Client Company", "clientCompany"),
         ("Client Email", "clientEmail"),
