@@ -64,6 +64,7 @@ _WORK_ORDER_SECTIONS = [
         ("Client Email", "clientEmail"),
         ("Client Phone", "clientPhone"),
         ("Product / Service", "productService"),
+        ("Price", "totalCost"),
         ("Status", "status"),
         ("Client Code", "clientCode"),
         ("Sub Client", "subClient"),
