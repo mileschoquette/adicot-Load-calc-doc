@@ -407,7 +407,7 @@ def job_star_save(job_id: str):
         merged = {**record, **fields}
         missing_block = _missing_info_block(merged)
         subject = (f"Your Adicot project specifications: "
-                   f"{record.get('projectAddress') or record.get('title') or job_id}")
+                   f"{record.get('jobNo') or record.get('title') or job_id}")
         body = (
             f"Hi {record.get('clientName') or ''},\n\n"
             "Please review and complete your project specifications, then sign to authorize "
@@ -445,7 +445,7 @@ def _notify_staff_signed(job_id: str, record: dict, signer_name: str, signer_tit
     plain SMTP send (not a Gmail draft) since this is staff-only, not
     client-facing, and doesn't need a human review step before it goes out."""
     base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")
-    job_label = record.get("title") or record.get("projectAddress") or job_id
+    job_label = record.get("jobNo") or record.get("title") or job_id
     subject = f"{job_label} — signed, now in queue"
     body = (
         f"{signer_name} ({signer_title}) just signed the work order for {job_label}.\n"
