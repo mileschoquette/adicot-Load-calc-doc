@@ -17,7 +17,7 @@
 
 // ── CONFIGURATION ─────────────────────────────────────────────────────────────
 
-const SHEET_ID      = "1wFV-0Z_Tswjuue0xfyVdZce_IZPjFwVdisvcZfOWcng";
+const SHEET_ID      = "1ZSWc4CL5UVtPqB74hIiTSgug2ld7dqeViWuXvad668g"; // "Website Database" — must match Render's GOOGLE_SHEETS_SPREADSHEET_ID
 const TAB_NAME      = "Adicot Projects";
 const ADMIN_EMAIL   = "admin@adicot.com";
 const REVIEW_EMAIL  = "agc@adicot.com";
@@ -221,7 +221,7 @@ const SHEET_COLUMNS = [
   "clientPhone", "productService", "clientCode", "subClient", "community",
   "subdivision", "locationDisambig", "lennarJobNo", "engagementDays",
   "buildingStatus", "sf", "occupants", "orientation", "indoorTemp",
-  "indoorRH", "weatherStation", "deckType", "roofCover", "roofColor",
+  "indoorRH", "weatherData", "deckType", "roofCover", "roofColor",
   "roofRValue", "insulPosition", "suspCeiling", "atticCond", "ceilingHeight",
   "wallFinish", "wallConstruction", "wallColor", "wallRValue", "wallHeight",
   "partConstruction", "partRValue", "floorType", "floorRValue", "glassU",
@@ -1785,7 +1785,7 @@ function notifyProjectsSheet(data, sheetRowIndex) {
       sf: data.sf || 0,
       description: data.description || "",
       projectFolder: data.projectFolder || "",
-      weatherStation: data.weatherData || "",
+      weatherData: data.weatherData || "",
 
       buildingStatus: data.buildingStatus || "",
       occupancyType: data.occupancyType || "",
@@ -1917,6 +1917,13 @@ function _logToSheet(message) {
 // One-time: fill weatherData on existing Projects from the Sheet's addresses.
 // Batched + resumable. Run it; if the log says "RUN AGAIN", run it again until
 // it logs "BACKFILL COMPLETE".
+//
+// STILL HITS WIX: this and sendReviewEmailForProject() below are manual, run-
+// from-the-editor utilities, not part of the automatic pipeline — left as-is
+// during the Wix cleanup since they're not reachable from any live trigger,
+// but they'll fail (or return stale data) since these Wix Velo functions may
+// no longer be maintained. Needs its own Sheets-based rewrite if ever needed
+// again.
 function backfillWeatherData() {
   var listResp = UrlFetchApp.fetch(
     'https://www.adicotengineeringinc.com/_functions/projectsNeedingWeather',
@@ -1948,6 +1955,7 @@ function backfillWeatherData() {
 
 // Manually fire the admin review notification email for a project added by
 // hand in the Wix CMS. Pass the CMS record _id. Run from the editor.
+// (See the WIX warning on backfillWeatherData above — same caveat applies.)
 function sendReviewEmailForProject(projectId) {
   if (!projectId) { Logger.log('Pass a CMS _id.'); return; }
   try {
