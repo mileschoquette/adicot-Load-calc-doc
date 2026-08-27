@@ -112,16 +112,16 @@ def _debug_equip_status():
 @misc.route("/debug/wix-projects")
 @_require_auth
 def debug_wix_projects():
-    """Diagnostic: raw list_projects() output (first 20) plus whether the Wix
-    credentials are configured and each project's computed is_stale(), so Wix
+    """Diagnostic: raw list_projects() output (first 20) plus whether the Sheets
+    credentials are configured and each project's computed is_stale(), so CMS
     connectivity/auto-expire behavior can be checked without direct API access."""
     _cms.invalidate_cache()
     projects = _cms.list_projects()
     return jsonify({
         "count": len(projects),
         "credentials_set": {
-            "WIX_API_KEY": bool(os.environ.get("WIX_API_KEY")),
-            "WIX_SITE_ID": bool(os.environ.get("WIX_SITE_ID")),
+            "GOOGLE_SHEETS_SPREADSHEET_ID": bool(os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID")),
+            "GOOGLE_SERVICE_ACCOUNT_JSON": bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")),
         },
         "first_20": [
             {**p, "is_stale": _is_stale(p.get("createdDate"))}

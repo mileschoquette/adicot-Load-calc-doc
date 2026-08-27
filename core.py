@@ -30,7 +30,6 @@ from werkzeug.utils import secure_filename
 import calendar_utils
 from hvac import hvac_pipeline as hp
 from pdf.charts import render_all_charts
-from integrations import wix_client
 from integrations import sheets_client
 
 # ── Equipment selector (optional — graceful fallback if files not present) ──
@@ -98,12 +97,9 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD")
 CROP_TOKEN = os.environ.get("CROP_TOKEN")
 CROP_MAX_BYTES = 40 * 1024 * 1024   # 40 MB ceiling for the JSON body on this route
 
-# ─── CMS backend selection (Wix -> Google Sheets migration) ──────────
+# ─── CMS backend ───────────────────────────────────────────────────────
 # _cms is the single indirection point every CMS read/write goes through.
-# Flip USE_SHEETS_CMS once the Sheet is populated (migrate_wix_to_sheets.py)
-# and AdicotProjects.gs is pointed at the Sheet — no other code changes.
-USE_SHEETS_CMS = os.environ.get("USE_SHEETS_CMS", "").strip().lower() in ("1", "true", "yes")
-_cms = sheets_client if USE_SHEETS_CMS else wix_client
+_cms = sheets_client
 
 # ─── Client portal magic-link secret (see integrations/portal_tokens.py) ──
 # Must match the PORTAL_TOKEN_SECRET Script Property set in the Apps Script

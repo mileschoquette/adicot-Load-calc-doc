@@ -3,15 +3,15 @@
 // =============================================================================
 // Intake-to-proposal pipeline:
 //   Gmail label -> Claude extraction -> Google Sheet ("Projects" tab) + Drive folder
-//   -> static admin review NOTIFICATION email (button to hosted review page)
-//   -> review/edit/approve on adicot.com page -> Gmail draft (questions|proposal)
-//   -> client answers/sign -> status Active.
+//   -> static admin review notification email (button to /job/<id>/star on Render)
+//   -> review/edit/approve, client answers, and client sign-off all happen
+//      entirely in the Flask app (job_star_save(), then /portal/<token> in
+//      job_lifecycle.py), writing straight to the Sheet via _cms.update_project().
+//      Nothing posts back to this script for any of that anymore.
 //
-// NOTE: The AMP admin-review email has been retired. Review now happens on the
-// hosted admin-review page (adicot.com, embedded #html1). This file sends a
-// static notification email that links to that page. The page (via its Velo
-// wrapper) writes the CMS record, then calls saveAndApprove here to create thep
-// Gmail draft.
+// NOTE: Review no longer happens on a Wix-hosted page. That page (and the
+// Velo backend it POSTed to) has been retired; nothing in this file links to
+// it anymore.
 // =============================================================================
 
 
@@ -19,8 +19,6 @@
 
 const SHEET_ID      = "1wFV-0Z_Tswjuue0xfyVdZce_IZPjFwVdisvcZfOWcng";
 const TAB_NAME      = "Adicot Projects";
-const PORTAL_URL    = "https://www.adicotengineeringinc.com/projects";
-const ADMIN_REVIEW_PAGE_URL = "https://www.adicotengineeringinc.com/admin-review"; // hosted review page (token-gated)
 const ADMIN_EMAIL   = "admin@adicot.com";
 const REVIEW_EMAIL  = "agc@adicot.com";
 const SLACK_WEBHOOK = "REDACTED_SLACK_WEBHOOK"; // rotate the real value in Slack, then set it directly in the Apps Script editor — not committed here
@@ -107,7 +105,6 @@ function testWeatherStation() {
 const INTAKE_LABEL    = "Projects/x-Estimate/Intake";
 const PROCESSED_LABEL = "Projects/x-Estimate/PSR Ready";
 const PROJECT_LABEL_PREFIX  = 'Projects/x-Estimate/';   // before client signs
-const PROJECT_LABEL_CURRENT = 'Projects/x-Current/';    // after client signs
 
 function _projectLabelName(data) {
   var raw = String(data && (data.projectFolder || data.projectName || data.jobNo) || '').trim();
@@ -120,21 +117,6 @@ function _getOrCreateProjectLabel(data) {
   var label = GmailApp.getUserLabelByName(name);
   if (!label) { label = GmailApp.createLabel(name); _logToSheet('Project label created: ' + name); }
   return label;
-}
-
-function _moveProjectLabelToCurrent(projectFolder) {
-  if (!projectFolder) return;
-  try {
-    var oldName  = PROJECT_LABEL_PREFIX  + projectFolder;
-    var newName  = PROJECT_LABEL_CURRENT + projectFolder;
-    var oldLabel = GmailApp.getUserLabelByName(oldName);
-    if (!oldLabel) { _logToSheet('move label: not found ' + oldName); return; }
-    var newLabel = GmailApp.getUserLabelByName(newName) || GmailApp.createLabel(newName);
-    var threads  = oldLabel.getThreads();
-    for (var i = 0; i < threads.length; i++) { threads[i].addLabel(newLabel); threads[i].removeLabel(oldLabel); }
-    oldLabel.deleteLabel();
-    _logToSheet('Project label moved to x-Current: ' + projectFolder + ' (' + threads.length + ' threads)');
-  } catch (e) { _logToSheet('_moveProjectLabelToCurrent error: ' + e.message); }
 }
 
 function _applyProjectLabel(thread, data, where) {
@@ -206,18 +188,20 @@ const COL = {
   PROJECT_NOTES:     52,
   DRIVE_FOLDER:      53,
 };
-// NOTE: The Sheet has no columns for roofCover, atticCond, or engagementDays.
-// Those live in the Wix CMS only (Roof Cover / Attic Cond / Engagement Days),
-// which the review page's Velo wrapper writes directly. saveAndApprove below
-// mirrors to the Sheet only the fields that HAVE a column, and never overwrites
+// NOTE: The Sheet has no columns for roofCover, atticCond, or engagementDays —
+// a holdover from when those fields lived in the Wix CMS only. Never overwrite
 // ROOF_COLOR with a roof-covering value (the old collision bug).
 //
 // The COL map and TAB_NAME ("Adicot Projects") above are the LEGACY partial
-// Wix-mirror tab. They are left untouched and still used by the
-// saveAndApprove/handleClientSigned/handleClientAnswers functions further down
-// this file. notifyProjectsSheet() below does NOT use COL or TAB_NAME — it
-// writes to a separate, new tab (see PROJECTS_TAB_NAME / SHEET_COLUMNS just
-// below) that is the sole new system of record, using the exact same column
+// mirror tab. The only thing left that still uses them is appendProjectRow(),
+// itself already dead (see its own header comment — "legacy, no longer
+// called"). handleClientSigned/handleClientAnswers, which used to write into
+// this legacy tab (a real bug — they never touched the tab sheets_client.py
+// reads), were confirmed dead and removed: client signing/answering now
+// happens entirely in Flask's /portal/<token> route (job_lifecycle.py),
+// which writes straight to PROJECTS_TAB_NAME via _cms.update_project().
+// notifyProjectsSheet() below also writes to that same new tab (see
+// PROJECTS_TAB_NAME / SHEET_COLUMNS just below), using the exact same column
 // order as sheets_client.py's SHEET_COLUMNS in the Python app.
 
 // Dedicated tab for the new, clean schema — matches sheets_client.py's
@@ -562,43 +546,28 @@ function _buildAdminNotificationHtml(data, reviewUrl) {
 
 // ── REQUEST ROUTER ────────────────────────────────────────────────────────────
 
+// No actions left to dispatch — the client portal (signing, answering
+// questions, saving progress) is now handled entirely by Flask's
+// /portal/<token> route, writing straight to the Sheet via _cms.update_project().
+// This endpoint is kept only so the deployed web app doesn't error on a stray
+// POST; nothing in this codebase sends one anymore.
 function doPost(e) {
   try {
     _logToSheet('doPost called');
     var payload = JSON.parse(e.postData.contents);
-
-    if (payload.action === 'saveAndApprove') {
-      var result = _handleSaveAndApprove(payload);
-      return _respond(result.status, result.message || '');
-    }
-    if (payload.action === 'createProposal') {
-      var r1 = createClientDraft(payload.projectData, payload.adminFields, payload.clientFields);
-      return _respond(r1.status, r1.message || '');
-    }
-    if (payload.action === 'createQuestionsEmail') {
-      var r2 = createQuestionsEmailDraft(payload.projectData, payload.adminFields, payload.clientFields);
-      return _respond(r2.status, r2.message || '');
-    }
-    if (payload.action === 'clientAnswers') {
-      var r3 = handleClientAnswers(payload.projectData || payload);
-      return _respond(r3.status, r3.message || '');
-    }
-    if (payload.action === 'clientSigned') {
-      var r4 = handleClientSigned(payload);
-      return _respond(r4.status, r4.message || '');
-    }
-    return _respond('error', 'Unknown action: ' + (payload.action || 'none'));
+    return _respond('error', 'Unknown action: ' + (payload.action || 'none') + ' — this endpoint no longer accepts actions.');
   } catch (err) {
     _logToSheet('doPost ERROR: ' + err.message);
     return _respond('error', err.message);
   }
 }
 
-// doGet retained only for health checks / legacy links. Review + approval now
-// happen on the hosted page; the page's Velo wrapper calls saveAndApprove.
+// doGet retained only for health checks. Review, approval, client answers,
+// and signing all happen on Render now (job_star_save() / /portal/<token>);
+// this web app's POST endpoint has no live actions left (see doPost above).
 function doGet(e) {
   return HtmlService.createHtmlOutput(
-    '<p style="font-family:Arial;padding:32px">Adicot intake endpoint is active. Review happens on the admin review page.</p>'
+    '<p style="font-family:Arial;padding:32px">Adicot intake endpoint is active. Review happens at /job/&lt;id&gt;/star on Render.</p>'
   );
 }
 
@@ -1631,289 +1600,12 @@ function testLiveCrop() {
   Logger.log('Open the test folder link above to see all cropped section images.');
 }
 
-// ── CREATE CLIENT (PROPOSAL) GMAIL DRAFT ──────────────────────────────────────
-// LEGACY / DEAD ONCE CUTOVER COMPLETES: this function (and _buildClientPageLink,
-// _buildPortalLink, createQuestionsEmailDraft, and _handleSaveAndApprove below)
-// are only ever invoked via doPost's 'createProposal' / 'createQuestionsEmail' /
-// 'saveAndApprove' actions — which only the OLD Wix admin-review page's Velo
-// wrapper ever POSTs. Now that _sendAdminReviewEmail() and _buildAdminReviewLink()
-// point admins at /job/<id>/star on Render instead, nothing links to that Wix
-// page anymore, so nothing should be able to reach these functions in normal
-// operation. Left in place rather than deleted (smaller, safer diff) — the
-// equivalent flow now lives in Flask's job_star_save() + gmail_client.py.
-
-function createClientDraft(projectData, adminFields, clientFieldKeys) {
-  try {
-    var clientEmail = projectData.clientEmail;
-    if (!clientEmail) return { status: 'error', message: 'No client email in project data.' };
-    var merged     = Object.assign({}, projectData, adminFields || {});
-    var firstName  = (merged.clientName || merged.clientFirst || '').split(/\s+/)[0] || 'there';
-    var jobNum     = merged.jobNo || merged.jobNumber || '';
-    var projName   = merged.title || merged.projectName || jobNum;
-    var portalLink = _buildClientPageLink(merged, true);
-    var emailHtml  = _buildClientSummaryEmail(merged, firstName, jobNum, projName, portalLink, true, clientFieldKeys || []);
-    var plain      = _clientSummaryPlain(firstName, projName, portalLink, true);
-    var subject    = jobNum + ' · ' + projName + ' — your proposal';
-    var draft = GmailApp.createDraft(clientEmail, subject, plain, {
-      htmlBody: emailHtml,
-      name:     'Adrienne Gould-Choquette, PE',
-      replyTo:  Session.getActiveUser().getEmail(),
-    });
-    _applyProjectLabel(draft.getMessage().getThread(), merged, 'proposal review draft');   // ADD
-    _updateSheetStatus(merged.jobNo, 'Draft Created');
-    return { status: 'ok' };
-  } catch (err) {
-    _logToSheet('createClientDraft ERROR: ' + err.message);
-    return { status: 'error', message: err.toString() };
-  }
-}
-
 function _buildAdminReviewLink(data) {
   // Points at the Flask app's /job/<id>/star (Render), not the retired Wix
   // admin-review page. Unlike the old Wix page, this route is keyed only by
   // the Sheets row _id — there's no jobNo-based fallback route to fall back to.
   var id = data._id || data.projectId || '';
   return PORTAL_BASE_URL + '/job/' + encodeURIComponent(id) + '/star';
-}
-
-function _buildClientPageLink(data, hasQuote) {
-  var id    = data._id    || data.projectId || '';
-  var jobNo = data.jobNo  || data.jobNumber || '';
-  var base  = ADMIN_REVIEW_PAGE_URL + '?mode=client';
-  if (id)         base += '&id='    + encodeURIComponent(id);
-  else if (jobNo) base += '&jobNo=' + encodeURIComponent(jobNo);
-  if (hasQuote)   base += '&quote=1';
-  return base;
-}
-
-function _buildPortalLink(data) {
-  var id    = data._id    || data.projectId || '';
-  var jobNo = data.jobNo  || data.jobNumber || '';
-  var base;
-  if (id)         base = PORTAL_URL + '?_id='   + encodeURIComponent(id);
-  else if (jobNo) base = PORTAL_URL + '?jobNo=' + encodeURIComponent(jobNo);
-  else            base = PORTAL_URL;
-  var cost = data.totalCost || '';
-  if (cost) base += '&totalCost=' + encodeURIComponent(String(cost));
-  return base;
-}
-
-function _buildClientEmailHtml(data, portalLink, clientFieldKeys) {
-  var firstName   = (data.clientName || data.clientFirst || '').split(' ')[0] || 'there';
-  var projectName = data.title || data.projectName || 'Your Project';
-  var address     = data.projectAddress || '';
-  var service     = data.productService || 'HVAC Engineering Services';
-  var fee         = data.totalCost ? '$' + Number(data.totalCost).toLocaleString() : 'Per proposal';
-  var qNote       = clientFieldKeys.length > 0
-    ? '<p style="margin:0 0 6px;font-size:13px;color:#888;">A few quick questions are included — should only take a minute.</p>'
-    : '';
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>' +
-  '<body style="margin:0;padding:0;background:#FAFAF7;font-family:Arial,sans-serif;">' +
-  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAF7;padding:32px 16px;"><tr><td align="center">' +
-  '<table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #D4D0C2;max-width:560px;">' +
-  '<tr><td style="background:#2C2C2A;padding:20px 28px;">' +
-  '<p style="margin:0;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#E8740A;">Adicot, Inc.</p>' +
-  '<p style="margin:6px 0 0;font-size:16px;font-weight:500;color:#fff;">Your proposal is ready, ' + firstName + '.</p>' +
-  '</td></tr>' +
-  '<tr><td style="padding:24px 28px 0;">' +
-  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAF7;border:1px solid #EDE8E1;border-radius:8px;">' +
-  '<tr><td style="padding:14px 18px;border-bottom:1px solid #EDE8E1;">' +
-  '<p style="margin:0;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#888;">Project</p>' +
-  '<p style="margin:4px 0 0;font-size:14px;font-weight:500;color:#2C2C2A;">' + projectName + '</p>' +
-  (address ? '<p style="margin:2px 0 0;font-size:12px;color:#888;">' + address + '</p>' : '') +
-  '</td></tr>' +
-  '<tr><td style="padding:14px 18px;border-bottom:1px solid #EDE8E1;">' +
-  '<p style="margin:0;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#888;">Service</p>' +
-  '<p style="margin:4px 0 0;font-size:14px;color:#444441;">' + service + '</p>' +
-  '</td></tr>' +
-  '<tr><td style="padding:14px 18px;">' +
-  '<p style="margin:0;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#888;">Fee</p>' +
-  '<p style="margin:4px 0 0;font-size:20px;font-weight:500;color:#2C2C2A;">' + fee + '</p>' +
-  '</td></tr></table></td></tr>' +
-  '<tr><td style="padding:22px 28px 0;">' +
-  '<p style="margin:0 0 10px;font-size:14px;color:#444441;line-height:1.6;">Please review the full proposal and work order in the portal, complete any remaining fields, and sign to get started.</p>' +
-  qNote + '</td></tr>' +
-  '<tr><td style="padding:20px 28px 28px;">' +
-  '<a href="' + portalLink + '" style="display:inline-block;background:#E8740A;color:#fff;text-decoration:none;font-size:14px;font-weight:500;padding:12px 28px;border-radius:8px;">Review &amp; Sign &#8594;</a>' +
-  '</td></tr>' +
-  '<tr><td style="padding:16px 28px;border-top:1px solid #EDE8E1;background:#FAFAF7;">' +
-  '<p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">Adrienne Gould-Choquette, PE &nbsp;&middot;&nbsp; Adicot, Inc.<br>Questions? Reply to this email.</p>' +
-  '</td></tr>' +
-  '</table></td></tr></table></body></html>';
-}
-
-function _updateSheetStatus(jobNo, newStatus) {
-  if (!jobNo) return;
-  try {
-    var sheet = _getSheet();
-    var data  = sheet.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      if (String(data[i][COL.JOB_NO - 1]) === String(jobNo)) {
-        sheet.getRange(i + 1, COL.STATUS).setValue(newStatus);
-        SpreadsheetApp.flush();
-        break;
-      }
-    }
-  } catch (err) { _logToSheet('_updateSheetStatus ERROR: ' + err.message); }
-}
-
-
-// ── CREATE QUESTIONS (NEED-MORE-INFO) EMAIL DRAFT ─────────────────────────────
-
-function createQuestionsEmailDraft(projectData, adminFields, clientFieldKeys) {
-  try {
-    var p = Object.assign({}, projectData, adminFields || {});
-    if (!p.clientEmail) return { status: 'error', message: 'No client email in project data.' };
-    var firstName = (p.clientName || p.clientFirst || '').split(/\s+/)[0] || 'there';
-    var jobNum    = p.jobNo || p.jobNumber || '';
-    var projName  = p.title || p.projectName || jobNum;
-    var subject   = jobNum + ' · ' + projName + ' — a few quick questions';
-    var pageLink  = _buildClientPageLink(p, false); // questions mode (no quote)
-    var html      = _buildClientSummaryEmail(p, firstName, jobNum, projName, pageLink, false, clientFieldKeys || []);
-    var plain     = _clientSummaryPlain(firstName, projName, pageLink, false);
-    var draft = GmailApp.createDraft(p.clientEmail, subject, plain, {
-      htmlBody: html,
-      name:     'Adrienne Gould-Choquette, PE',
-      replyTo:  Session.getActiveUser().getEmail(),
-    });
-    _applyProjectLabel(draft.getMessage().getThread(), p, 'questions review draft');   // ADD
-    _updateSheetStatus(jobNum, 'Questions Draft Created');
-    _logToSheet('createQuestionsEmailDraft (static): draft created for ' + p.clientEmail);
-    return { status: 'ok' };
-  } catch (err) {
-    _logToSheet('createQuestionsEmailDraft ERROR: ' + err.message);
-    return { status: 'error', message: err.toString() };
-  }
-}
-
-// ── STATIC CLIENT EMAIL (summary + button to the client page) ────────────────
-// Used for BOTH the need-more-info (hasQuote=false) and proposal (hasQuote=true)
-// emails. Styled to match the admin notification. No AMP.
-
-function _clientSummaryPlain(firstName, projName, pageLink, hasQuote) {
-  var lines = ['Hi ' + firstName + ',', ''];
-  if (hasQuote) {
-    lines.push('Your proposal for ' + projName + ' is ready to review and sign.');
-  } else {
-    lines.push('We pulled most of what we need from your drawings for ' + projName + '.');
-    lines.push('A few items still need your input before we can finalize your quote.');
-  }
-  lines.push('');
-  lines.push('Open your project page to review the details, make any corrections, and ' + (hasQuote ? 'sign:' : 'answer the open questions:'));
-  lines.push(pageLink);
-  lines.push('');
-  lines.push('—');
-  lines.push('Adrienne Gould-Choquette, PE');
-  lines.push('Adicot, Inc.');
-  lines.push('agc@adicot.com');
-  return lines.join('\n');
-}
-
-function _buildClientSummaryEmail(p, firstName, jobNum, projName, pageLink, hasQuote, clientFieldKeys) {
-  var e = function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-
-  // FULL field set — every building parameter the page shows. Each field that is
-  // filled goes to the Confirmed section; each blank field goes to Needs-your-input.
-  // (Glass U & SHGC are combined into one row.)
-  var ALL_DEFS = [
-    ['projectAddress','Project address'],
-    ['buildingStatus','Building status'],
-    ['sf','Approx. area'],
-    ['occupants','Occupants'],
-    ['orientation','Orientation'],
-    ['roofRValue','Roof R-value'],
-    ['roofColor','Roof color'],
-    ['deckType','Roof deck type'],
-    ['roofCover','Roof covering'],
-    ['suspCeiling','Suspended ceiling'],
-    ['atticCond','Attic / plenum'],
-    ['wallConstruction','Wall construction'],
-    ['wallHeight','Exterior wall height'],
-    ['glassU','Glass U / SHGC'],
-    ['heatGenEquipment','Heat-gen equipment'],
-    ['acNewExisting','AC new / existing'],
-    ['acMounting','AC mounting'],
-    ['heatType','Heat type'],
-    ['lightingWattsPerSF','Lighting W/SF'],
-    ['ceilingHeight','Ceiling height']
-  ];
-  function has(k){
-    if(k==='glassU') return (p.glassU!==undefined&&p.glassU!==null&&p.glassU!==''&&p.glassU!==0)&&(p.glassSHGC!==undefined&&p.glassSHGC!==null&&p.glassSHGC!==''&&p.glassSHGC!==0);
-    var v=p[k]; return v!==undefined && v!==null && v!=='' && v!==0;
-  }
-  var confirmedRows = ALL_DEFS.filter(function(d){return has(d[0]);});
-  var missingRows   = ALL_DEFS.filter(function(d){return !has(d[0]);});
-
-  function rowHtml(label, val, kind){
-    var dot = kind==='ok' ? '#2D6A2D' : '#E8740A';
-    var valTxt = kind==='ok' ? e(val) : 'Needs your input';
-    var valColor = kind==='ok' ? '#2C2C2A' : '#C05C0A';
-    return '<tr><td style="padding:9px 16px;border-bottom:1px solid #EDE8E1;font-size:12px;color:#444441;">' +
-      '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+dot+';margin-right:8px;"></span>' +
-      e(label) + '</td>' +
-      '<td style="padding:9px 16px;border-bottom:1px solid #EDE8E1;font-size:12px;color:'+valColor+';text-align:right;font-weight:500;">'+valTxt+'</td></tr>';
-  }
-  function valOf(k){
-    if(k==='glassU') return (p.glassU&&p.glassSHGC)?('U '+p.glassU+' / SHGC '+p.glassSHGC):(p.glassU||'');
-    return p[k];
-  }
-
-  var confHtml = confirmedRows.map(function(d){return rowHtml(d[1], valOf(d[0]), 'ok');}).join('');
-  var missHtml = missingRows.map(function(d){return rowHtml(d[1], '', 'miss');}).join('');
-
-  var feeBlock = '';
-  if (hasQuote && p.totalCost) {
-    feeBlock =
-      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAF7;border:1px solid #EDE8E1;border-radius:8px;margin-bottom:18px;">' +
-      '<tr><td style="padding:13px 16px;border-bottom:1px solid #EDE8E1;"><span style="font-size:11px;color:#9A9A9A;text-transform:uppercase;letter-spacing:.06em;">Service</span><br><span style="font-size:13px;color:#2C2C2A;font-weight:500;">'+e(p.productService||'Engineering services')+'</span></td></tr>' +
-      '<tr><td style="padding:13px 16px;"><span style="font-size:11px;color:#9A9A9A;text-transform:uppercase;letter-spacing:.06em;">Fee</span><br><span style="font-size:22px;color:#2C2C2A;font-weight:600;">$'+Number(p.totalCost).toLocaleString()+'</span>'+(p.engagementDays?'<span style="font-size:12px;color:#9A9A9A;"> &nbsp;&middot;&nbsp; ~'+e(p.engagementDays)+' days</span>':'')+'</td></tr>' +
-      '</table>';
-  }
-
-  var intro = hasQuote
-    ? 'Your proposal is ready. Review the scope and fee below, make any corrections on your project page, then accept and sign.'
-    : 'We pulled most of what we need from your drawings. A few items still need your input before we can finalize your quote.';
-  var btnLabel = hasQuote ? 'Review &amp; Sign &rarr;' : 'Review &amp; Answer &rarr;';
-  var headerTag = hasQuote ? 'Your proposal' : 'A few quick questions';
-
-  var missingSection = missingRows.length
-    ? '<p style="margin:18px 0 8px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#C05C0A;">Needs your input</p>' +
-      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #EDE8E1;border-radius:8px;overflow:hidden;">'+missHtml+'</table>'
-    : '';
-  var confirmedSection = confirmedRows.length
-    ? '<p style="margin:18px 0 8px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#2D6A2D;">Confirmed from your drawings</p>' +
-      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #EDE8E1;border-radius:8px;overflow:hidden;">'+confHtml+'</table>'
-    : '';
-
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>' +
-  '<body style="margin:0;padding:0;background:#FAFAF7;font-family:Arial,Helvetica,sans-serif;">' +
-  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFAF7;padding:28px 12px;"><tr><td align="center">' +
-  '<table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;max-width:560px;border:1px solid #D4D0C2;">' +
-
-  '<tr><td style="background:#2C2C2A;padding:20px 24px;">' +
-  '<p style="margin:0;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#E8740A;">Adicot, Inc. &mdash; '+e(headerTag)+'</p>' +
-  '<p style="margin:6px 0 0;font-size:16px;color:#fff;font-weight:400;">Hi '+e(firstName)+'.</p>' +
-  '<p style="margin:3px 0 0;font-size:12px;color:#D4D0C2;">'+e(jobNum)+' &middot; '+e(projName)+'</p>' +
-  '</td></tr>' +
-
-  '<tr><td style="padding:22px 24px 0;">' +
-  '<p style="margin:0 0 16px;font-size:14px;color:#444441;line-height:1.6;">'+intro+'</p>' +
-  feeBlock +
-  missingSection +
-  '</td></tr>' +
-
-  '<tr><td style="padding:22px 24px 24px;">' +
-  '<a href="'+pageLink+'" style="display:inline-block;background:#E8740A;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:13px 28px;border-radius:8px;">'+btnLabel+'</a>' +
-        '<p style="margin:14px 0 0;font-size:12px;color:#444441;line-height:1.6;">Button not working? Tap or paste this link:<br>' +
-        '<a href="'+pageLink+'" style="color:#E8740A;text-decoration:underline;word-break:break-all;">'+pageLink+'</a></p>' +
-  '<p style="margin:12px 0 0;font-size:11px;color:#9A9A9A;line-height:1.6;">You can review everything, see the source snippets from your drawings, and make corrections right on the page.</p>' +
-  '</td></tr>' +
-
-  '<tr><td style="padding:16px 24px;border-top:1px solid #EDE8E1;background:#FAFAF7;">' +
-  '<p style="margin:0;font-size:11px;color:#9A9A9A;line-height:1.6;">Adrienne Gould-Choquette, PE &middot; Adicot, Inc.<br>Questions? Reply to this email.</p>' +
-  '</td></tr>' +
-
-  '</table></td></tr></table></body></html>';
 }
 
 function _esc(s)     { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -2186,246 +1878,11 @@ function notifyProjectsSheet(data, sheetRowIndex) {
 }
 
 
-// ── saveAndApprove (called by the admin review page's Velo wrapper) ──────────
-// Mirrors edited fields to the legacy Sheet mirror (only fields that HAVE a
-// column; the CMS is written by the Velo wrapper and holds the complete
-// record), then creates the Gmail draft (questions | proposal). Nothing sends
-// automatically.
-
-function _handleSaveAndApprove(payload) {
-  try {
-    var jobNo = payload.jobNo || '';
-    var pid   = payload.pid   || payload.projectId || '';
-    var mode  = (payload.mode || 'questions').toLowerCase();
-
-    var num = function(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[$,]/g, '')); return isNaN(n) ? null : n; };
-
-    var d = {
-      jobNo:            jobNo,
-      _id:              pid,
-      // BUG 3 FIX: fall back to title or jobNo so the project name is never blank
-      // in the email subject or sheet mirror when projectFolder isn't sent.
-      projectName:      payload.projectFolder || payload.title || payload.jobNo || '',
-      projectFolder:    payload.projectFolder || payload.title || payload.jobNo || '',
-      projectAddress:   payload.projectAddress || '',
-      clientName:       payload.clientName  || '',
-      clientEmail:      payload.clientEmail || '',
-      sf:               num(payload.sf),
-      occupants:        num(payload.occupants),
-      occupancyType:    payload.occupancyType   || '',
-      buildingStatus:   payload.buildingStatus  || '',
-      orientation:      payload.orientation     || '',
-      roofRValue:       payload.roofRValue      || '',
-      roofColor:        payload.roofColor       || '',
-      roofCover:        payload.roofCover       || '',
-      deckType:         payload.deckType        || '',
-      insulPosition:    payload.insulPosition   || '',
-      suspCeiling:      payload.suspCeiling     || '',
-      atticCond:        payload.atticCond       || '',
-      wallConstruction: payload.wallConstruction|| '',
-      wallHeight:       payload.wallHeight      || '',
-      glassU:           num(payload.glassU),
-      glassSHGC:        num(payload.glassSHGC),
-      ceilingHeight:    payload.ceilingHeight   || '',
-      lightingWattsPerSF: payload.lightingWattsPerSF || '',
-      heatGenEquipment: payload.heatGenEquipment || '',
-      acNewExisting:    payload.acNewExisting   || '',
-      acMounting:       payload.acMounting      || '',
-      systemType:       payload.systemType      || '',
-      heatType:         payload.heatType        || '',
-      doorType:         payload.doorType        || '',
-      productService:   payload.productService  || '',
-      totalCost:        num(payload.totalCost),
-      // for the questions email (insulPosition/atticCond feed the confirmed block)
-      glassValues:      (payload.glassU && payload.glassSHGC) ? ('U = ' + payload.glassU + ' · SHGC = ' + payload.glassSHGC) : '',
-    };
-
-    // ── Mirror to the legacy Sheet (only columns that exist) ──
-    try {
-      var sheet = _getSheet();
-      var rows  = sheet.getDataRange().getValues();
-      for (var i = 1; i < rows.length; i++) {
-        if (String(rows[i][COL.JOB_NO-1]).trim() === jobNo.trim()) {
-          var r = i + 1;
-          var put = function(col, v) { if (v !== null && v !== undefined && v !== '') sheet.getRange(r, col).setValue(v); };
-
-          if (d.projectFolder)    put(COL.PROJECT_NAME,      d.projectFolder);
-          put(COL.PROJECT_ADDRESS, d.projectAddress);
-          put(COL.SF,              d.sf);
-          put(COL.OCCUPANCY,       d.occupancyType);
-          put(COL.OCCUPANTS,       d.occupants);
-          put(COL.BUILDING_STATUS, d.buildingStatus);
-          put(COL.ORIENTATION,     d.orientation);
-          put(COL.ROOF_R_VALUE,    d.roofRValue);
-          put(COL.ROOF_COLOR,      d.roofColor);       // ONLY the true roof COLOR — never roofCover
-          put(COL.ROOF_DECK_TYPE,  d.deckType);
-          put(COL.ROOF_INSUL_POS,  d.insulPosition);
-          put(COL.ROOF_SUSP_CEIL,  d.suspCeiling);
-          put(COL.WALL_CONSTRUCTION, d.wallConstruction);
-          put(COL.WALL_HEIGHT,     d.wallHeight);
-          put(COL.GLASS_FIXED_U,   d.glassU);
-          put(COL.GLASS_FIXED_SHGC,d.glassSHGC);
-          put(COL.CEIL_HEIGHT,     d.ceilingHeight);
-          put(COL.LIGHTING_WPF,    d.lightingWattsPerSF);
-          put(COL.HEAT_GEN_EQUIP,  d.heatGenEquipment);
-          put(COL.AC_NEW_EXISTING, d.acNewExisting);
-          put(COL.AC_MOUNTING,     d.acMounting);
-          put(COL.DOOR_TYPE,       d.doorType);
-          put(COL.PRODUCT_SERVICE, d.productService);
-          put(COL.TOTAL_COST,      d.totalCost);
-          // roofCover, atticCond, engagementDays have NO legacy Sheet column — CMS only.
-          sheet.getRange(r, COL.STATUS).setValue('Pending Client Approval');
-          SpreadsheetApp.flush();
-          break;
-        }
-      }
-    } catch (sheetErr) {
-      _logToSheet('saveAndApprove sheet-mirror error: ' + sheetErr.message);
-    }
-
-    // ── Resolve client email from CMS if missing ──
-    // Always look up by jobNo since pid is the jobNo string, not a Wix _id.
-    if (!d.clientEmail || !d._id || d._id === jobNo) {
-      try {
-        var lookupParam = 'jobNo=' + encodeURIComponent(jobNo);
-        var wixResp = UrlFetchApp.fetch(
-          'https://www.adicotengineeringinc.com/_functions/getProject?' + lookupParam,
-          { muteHttpExceptions: true, followRedirects: true }
-        );
-        _logToSheet('getProject status: ' + wixResp.getResponseCode());
-        _logToSheet('getProject body: ' + wixResp.getContentText().substring(0, 200));
-        var wixJson = JSON.parse(wixResp.getContentText());
-        var proj = wixJson.project || wixJson;
-        d.clientEmail = proj.clientEmail || '';
-        d.clientName  = proj.clientName  || ((proj.clientFirstName||'')+' '+(proj.clientLastName||'')).trim() || d.clientName;
-        d._id         = proj._id         || d._id;
-        _logToSheet('resolved clientEmail from CMS: ' + (d.clientEmail || 'still missing'));
-      } catch(fetchErr) {
-        _logToSheet('clientEmail CMS lookup failed: ' + fetchErr.message);
-      }
-    }
-
-    // ── Create the Gmail draft ──
-    var result;
-    if (mode === 'proposal') {
-      result = createClientDraft(d, {}, []);
-    } else {
-      var missingFields = ['deckType','roofCover','insulPosition','suspCeiling','atticCond','doorType'];
-      var clientFields = missingFields.filter(function(f) { return !d[f]; });
-      result = createQuestionsEmailDraft(d, {}, clientFields);
-    }
-
-    if (result.status !== 'ok') {
-      return { status: 'error', message: result.message || 'Draft creation failed' };
-    }
-    _logToSheet('saveAndApprove: draft created for ' + jobNo + ' mode=' + mode);
-    return { status: 'ok', message: (mode === 'proposal' ? 'Proposal' : 'Questions email') + ' draft created — check Gmail.' };
-
-  } catch (err) {
-    _logToSheet('_handleSaveAndApprove ERROR: ' + err.message);
-    return { status: 'error', message: err.message };
-  }
-}
-
-
-// ── HANDLE CLIENT SIGNED ──────────────────────────────────────────────────────
-
-function handleClientSigned(payload) {
-  try {
-    var d = payload, jobNo = d.projectId || '', sheet = _getSheet(), row = _findRowByProjectName(sheet, jobNo);
-    if (row !== -1) {
-      if (d.approxArea)        sheet.getRange(row, COL.SF).setValue(d.approxArea);
-      if (d.occupants)         sheet.getRange(row, COL.OCCUPANTS).setValue(d.occupants);
-      if (d.orientation)       sheet.getRange(row, COL.ORIENTATION).setValue(d.orientation);
-      if (d.buildingStatus)    sheet.getRange(row, COL.BUILDING_STATUS).setValue(d.buildingStatus);
-      if (d.roofDeckType)      sheet.getRange(row, COL.ROOF_DECK_TYPE).setValue(d.roofDeckType);
-      if (d.roofInsulPosition) sheet.getRange(row, COL.ROOF_INSUL_POS).setValue(d.roofInsulPosition);
-      if (d.roofSuspCeil)      sheet.getRange(row, COL.ROOF_SUSP_CEIL).setValue(d.roofSuspCeil);
-      if (d.roofColor)         sheet.getRange(row, COL.ROOF_COLOR).setValue(d.roofColor);
-      if (d.roofRValue)        sheet.getRange(row, COL.ROOF_R_VALUE).setValue(d.roofRValue);
-      if (d.ceilingHeight)     sheet.getRange(row, COL.CEIL_HEIGHT).setValue(d.ceilingHeight);
-      if (d.wallFinish)        sheet.getRange(row, COL.WALL_FINISH).setValue(d.wallFinish);
-      if (d.wallConstruction)  sheet.getRange(row, COL.WALL_CONSTRUCTION).setValue(d.wallConstruction);
-      if (d.wallColor)         sheet.getRange(row, COL.WALL_COLOR).setValue(d.wallColor);
-      if (d.wallRValue)        sheet.getRange(row, COL.WALL_R_VALUE).setValue(d.wallRValue);
-      if (d.wallHeight)        sheet.getRange(row, COL.WALL_HEIGHT).setValue(d.wallHeight);
-      if (d.glassFixedU)       sheet.getRange(row, COL.GLASS_FIXED_U).setValue(d.glassFixedU);
-      if (d.glassFixedSHGC)    sheet.getRange(row, COL.GLASS_FIXED_SHGC).setValue(d.glassFixedSHGC);
-      if (d.glassOperU)        sheet.getRange(row, COL.GLASS_OPER_U).setValue(d.glassOperU);
-      if (d.glassOperSHGC)     sheet.getRange(row, COL.GLASS_OPER_SHGC).setValue(d.glassOperSHGC);
-      if (d.doorType)          sheet.getRange(row, COL.DOOR_TYPE).setValue(d.doorType);
-      if (d.lightingWpf)       sheet.getRange(row, COL.LIGHTING_WPF).setValue(d.lightingWpf);
-      if (d.heatGenEquip)      sheet.getRange(row, COL.HEAT_GEN_EQUIP).setValue(d.heatGenEquip);
-      if (d.acNewExisting)     sheet.getRange(row, COL.AC_NEW_EXISTING).setValue(d.acNewExisting);
-      if (d.acMounting)        sheet.getRange(row, COL.AC_MOUNTING).setValue(d.acMounting);
-      if (d.projectNotes)      sheet.getRange(row, COL.PROJECT_NOTES).setValue(d.projectNotes);
-      sheet.getRange(row, COL.STATUS).setValue('Current Work');
-      SpreadsheetApp.flush();
-    }
-        var _projFolder = (row !== -1) ? String(sheet.getRange(row, COL.PROJECT_NAME).getValue()).trim() : jobNo;
-    _moveProjectLabelToCurrent(_projFolder);   // ADD
-
-    postToSlack(null, [
-      { type: 'header', text: { type: 'plain_text', text: 'Client signed — ' + jobNo } },
-      { type: 'section', fields: [
-        { type: 'mrkdwn', text: '*Services:*\n' + (d.services || '—') },
-        { type: 'mrkdwn', text: '*Area:*\n' + (d.approxArea || '—') + ' SF' },
-        { type: 'mrkdwn', text: '*Occupancy:*\n' + (d.occupancyType || '—') },
-        { type: 'mrkdwn', text: '*Signed:*\n' + (d.signedDate || new Date().toISOString()) },
-      ]},
-    ]);
-    GmailApp.sendEmail(ADMIN_EMAIL, 'Client signed — ' + jobNo, 'Work order signed.\n\nProject: ' + jobNo + '\nServices: ' + (d.services||'—') + '\nArea: ' + (d.approxArea||'—') + ' SF\nSigned: ' + (d.signedDate||'—'));
-    _logToSheet('handleClientSigned: ' + jobNo);
-    return { status: 'ok' };
-  } catch (err) { _logToSheet('handleClientSigned ERROR: ' + err.message); return { status: 'error', message: err.toString() }; }
-}
-
-
-// ── HANDLE CLIENT ANSWERS ─────────────────────────────────────────────────────
-
-function handleClientAnswers(data) {
-  try {
-    var sheet = _getSheet(), jobNo = data.project || '', row = _findRowByProjectName(sheet, jobNo);
-    if (row === -1) { _logToSheet('clientAnswers — no row: ' + jobNo); return { status: 'error', message: 'Project not found' }; }
-    if (data.totalSF)        sheet.getRange(row, COL.SF).setValue(data.totalSF);
-    if (data.occupants)      sheet.getRange(row, COL.OCCUPANTS).setValue(data.occupants);
-    if (data.ceilExceptions) sheet.getRange(row, COL.CEIL_HEIGHT).setValue(data.ceilExceptions);
-    if (data.deckType)       sheet.getRange(row, COL.ROOF_DECK_TYPE).setValue(data.deckType === 'other' ? data.deckOther : data.deckType);
-    if (data.hvacIntent)     sheet.getRange(row, COL.AC_MOUNTING).setValue(data.hvacIntent === 'other' ? data.hvacOther : data.hvacIntent);
-    if (data.notes)          sheet.getRange(row, COL.DESCRIPTION).setValue(data.notes);
-    sheet.getRange(row, COL.STATUS).setValue('Client Answered');
-    SpreadsheetApp.flush();
-    postToSlack(null, [
-      { type: 'header', text: { type: 'plain_text', text: 'Client answered — ready to quote' } },
-      { type: 'section', fields: [
-        { type: 'mrkdwn', text: '*Project:*\n' + jobNo },
-        { type: 'mrkdwn', text: '*SF:*\n' + (data.totalSF||'—') },
-        { type: 'mrkdwn', text: '*Deck:*\n' + (data.deckType||'—') },
-        { type: 'mrkdwn', text: '*HVAC:*\n' + (data.hvacIntent||'—') },
-      ]},
-    ]);
-    GmailApp.sendEmail(ADMIN_EMAIL, 'Client answered — ' + jobNo, 'SF: '+(data.totalSF||'—')+'\nDeck: '+(data.deckType||'—')+'\nHVAC: '+(data.hvacIntent||'—')+'\nNotes: '+(data.notes||'—'));
-    return { status: 'ok' };
-  } catch (err) { _logToSheet('handleClientAnswers ERROR: ' + err.message); return { status: 'error', message: err.toString() }; }
-}
-
-
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 
 function _getSheet() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
   return ss.getSheetByName(TAB_NAME) || ss.getSheets()[0];
-}
-
-function _findRowByProjectName(sheet, name) {
-  if (!name) return -1;
-  var data = sheet.getDataRange().getValues();
-  var nl   = name.toLowerCase().trim();
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][COL.PROJECT_NAME-1]).toLowerCase().trim() === nl) return i+1;
-    if (String(data[i][COL.JOB_NO-1]).toLowerCase().trim() === nl) return i+1;
-  }
-  return -1;
 }
 
 function _generateJobNo(companyOrName) {
