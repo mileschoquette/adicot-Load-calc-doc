@@ -411,6 +411,10 @@ function setupJobFolder() {
 }
 
 const PROJECT_SUBFOLDERS = ['1-From Client', '2-Equipment', '3-Load', '4-Design', '5-Energy', '6-Submit'];
+// Where a project lands in Drive when intake never resolved a client code
+// (unmatched sender, Claude didn't propose a new one) — keeps the job folder
+// + 6 subfolders getting created instead of silently skipping Drive entirely.
+const TEMP_CLIENT_FOLDER_NAME = 'Temp';
 
 function _findOrCreateFolder(name, parentId) {
   const q = "name = '" + name.replace(/'/g, "\\'") + "'"
@@ -431,21 +435,28 @@ function _findOrCreateFolder(name, parentId) {
   return { id: created.id, url: created.webViewLink };
 }
 
-function createProjectFolder(clientCode, subClient, locationDisambig) {
-  const folderName = buildProjectFolderName(clientCode, subClient, locationDisambig);
-  if (!folderName) throw new Error('No clientCode — cannot build folder name');
+function createProjectFolder(clientCode, subClient, locationDisambig, fallbackName) {
+  // No client code resolved (unmatched sender, Claude didn't propose a new
+  // one) — file under Temp/<jobNo> instead of throwing and skipping Drive
+  // entirely. Staff can move it once the real client is identified.
+  const usingTemp = !clientCode;
+  const clientFolderName = usingTemp ? TEMP_CLIENT_FOLDER_NAME : clientCode.trim();
+  const folderName = usingTemp ? (fallbackName || '') : buildProjectFolderName(clientCode, subClient, locationDisambig);
+  if (!folderName) throw new Error('No clientCode and no fallback job number — cannot build folder name');
 
   const jobFolderId = PropertiesService.getScriptProperties().getProperty('JOB_FOLDER_ID');
   if (!jobFolderId) throw new Error('JOB_FOLDER_ID not set — run setupJobFolder() first');
 
-  const clientFolder = _findOrCreateFolder(clientCode.trim(), jobFolderId);
+  const clientFolder = _findOrCreateFolder(clientFolderName, jobFolderId);
   const projectFolder = _findOrCreateFolder(folderName, clientFolder.id);
 
   for (var i = 0; i < PROJECT_SUBFOLDERS.length; i++) {
     _findOrCreateFolder(PROJECT_SUBFOLDERS[i], projectFolder.id);
   }
 
-  return { id: projectFolder.id, url: projectFolder.url };
+  if (usingTemp) _logToSheet('createProjectFolder: no clientCode — filed under ' + TEMP_CLIENT_FOLDER_NAME + '/' + folderName);
+
+  return { id: projectFolder.id, url: projectFolder.url, name: clientFolderName + '/' + folderName };
 }
 
 
@@ -657,11 +668,12 @@ function _processIntakeThread(thread, processedLabel, intakeLabel) {
     var pf = createProjectFolder(
       merged.clientCode || '',
       merged.subClient  || '',
-      merged.locationDisambig || ''
+      merged.locationDisambig || '',
+      jobNo
     );
     driveFolderId  = pf.id;
     driveFolderUrl = pf.url;
-    _logToSheet('Project folder created: ' + projectFolder + ' (' + driveFolderId + ')');
+    _logToSheet('Project folder created: ' + pf.name + ' (' + driveFolderId + ')');
   } catch(e3) {
     _logToSheet('createProjectFolder error: ' + e3.message);
   }
