@@ -417,11 +417,21 @@ def job_star_save(job_id: str):
 
     old_code = (record.get("clientCode") or "").strip()
     new_code = (fields.get("clientCode") or "").strip()
-    if new_code and new_code != old_code and record.get("driveFolderId"):
-        if gdrive_client.move_project_folder(record["driveFolderId"], new_code):
-            flash(f"Moved this project's Drive folder into {new_code}/.")
+    if new_code and new_code != old_code:
+        existing_folder_id = record.get("driveFolderId")
+        if existing_folder_id:
+            if gdrive_client.move_project_folder(existing_folder_id, new_code):
+                flash(f"Moved this project's Drive folder into {new_code}/.")
+            else:
+                flash("Client Code saved, but the Drive folder couldn't be moved automatically — move it by hand.")
         else:
-            flash("Client Code saved, but the Drive folder couldn't be moved automatically — move it by hand.")
+            job_no = record.get("jobNo") or job_id
+            pf = gdrive_client.create_project_folder(job_no, new_code)
+            if pf:
+                _cms.update_project(job_id, {"driveFolderId": pf["folder_id"], "driveFolderUrl": pf["folder_url"]})
+                flash(f"Created this project's Drive folder under {new_code}/.")
+            else:
+                flash("Client Code saved, but the Drive folder couldn't be created automatically — create it by hand.")
 
     if send_link:
         token = portal_tokens.make_token(job_id, PORTAL_TOKEN_SECRET, days_valid=180)

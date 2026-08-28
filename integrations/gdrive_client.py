@@ -18,6 +18,7 @@ Public functions:
     find_html(job_no)              -> (filename, bytes) | None
     get_submit_folder(job_no, ...) -> {"folder_id", "folder_url"} | None
     upload_files(job_no, files)    -> structured report (see docstring)
+    create_project_folder(job_no, code) -> {"folder_id","folder_url"} | None
     move_project_folder(id, code)  -> bool, reparents a project folder to 1-job/<code>/
     diagnose(job_no)               -> structured per-step report
     invalidate_cache()             -> clear cached folder IDs
@@ -66,6 +67,8 @@ _ROOT_FOLDER_NAME = os.environ.get("GDRIVE_ROOT_FOLDER_NAME", "1-job")
 _DESIGN_FOLDER_NAME = "4-Design"
 _SUBMIT_FOLDER_NAME = "6-Submit"
 _FOLDER_MIME = "application/vnd.google-apps.folder"
+# Mirrors PROJECT_SUBFOLDERS in archive/wix-snapshot/AdicotProjects.gs.
+PROJECT_SUBFOLDERS = ["1-From Client", "2-Equipment", "3-Load", "4-Design", "5-Energy", "6-Submit"]
 
 # Cache: maps "parent_id/child_name" → child_folder_id, with TTL
 _folder_cache: dict[str, tuple[float, str]] = {}
@@ -698,6 +701,44 @@ def upload_files(job_no: str,
 
     result["ok"] = bool(result["uploaded"]) and not result["errors"]
     return result
+
+
+# ────────────────────────────────────────────────────────────────────
+# Public: create_project_folder
+# ────────────────────────────────────────────────────────────────────
+
+def create_project_folder(job_no: str, client_code: str) -> Optional[dict]:
+    """Find-or-create 1-job/<client_code>/<job_no>/ with the six standard
+    subfolders. Returns {"folder_id", "folder_url"} for the job folder, or
+    None on failure. Idempotent — safe to call even if some/all of the tree
+    already exists (e.g. created by hand), since _ensure_folder finds before
+    creating at every level."""
+    if not job_no or not client_code:
+        return None
+
+    service = _build_service()
+    if service is None:
+        return None
+
+    root_id = _find_one_jobs_root(service)
+    if not root_id:
+        return None
+
+    company_id = _ensure_folder(service, root_id, client_code.strip())
+    if not company_id:
+        return None
+
+    job_id = _ensure_folder(service, company_id, job_no)
+    if not job_id:
+        return None
+
+    for sub in PROJECT_SUBFOLDERS:
+        _ensure_folder(service, job_id, sub)
+
+    return {
+        "folder_id": job_id,
+        "folder_url": f"https://drive.google.com/drive/folders/{job_id}",
+    }
 
 
 # ────────────────────────────────────────────────────────────────────
