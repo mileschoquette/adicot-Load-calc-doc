@@ -17,6 +17,12 @@
     unlock the rest of the tabs.</p>
 
   <h3>Work Order</h3>
+  {% if wo_sections %}
+    <button type="button" class="jump-to-save"
+            onclick="document.getElementById('wo-submit-row').scrollIntoView({behavior:'smooth', block:'start'})">
+      Jump to Save &#8595;
+    </button>
+  {% endif %}
   <form method="post" action="{{ url_for('job_lifecycle.job_star_save', job_id=job_id) }}" class="job-form" id="wo-form">
     {% for sec in wo_sections %}
       <section>
@@ -46,7 +52,7 @@
       <p class="muted">No CMS data on this project record yet.</p>
     {% endfor %}
     {% if wo_sections %}
-      <div class="submit-row">
+      <div class="submit-row" id="wo-submit-row">
         <button type="submit" name="action" value="save" class="btn-secondary">Save</button>
         <button type="submit" name="action" value="save_and_send" class="primary">Save &amp; Draft Client Email</button>
       </div>

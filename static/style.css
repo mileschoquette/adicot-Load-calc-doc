@@ -193,6 +193,25 @@ button.primary:hover, .button:hover { background: var(--accent-hover); }
   text-align: right;
 }
 
+.jump-to-save {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 900;
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 0.7rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.jump-to-save:hover { background: var(--accent-hover); }
+
 /* Results page */
 .downloads ul.file-list {
   list-style: none;
