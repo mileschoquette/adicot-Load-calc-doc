@@ -60,9 +60,10 @@ _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _DEFAULT_WORKSHEET_NAME = "Projects"
 
 # How long list_projects() results stay cached. Same rationale as
-# wix_client.py: short enough that new rows appear without a restart, long
-# enough that we don't hammer the API.
-_LIST_CACHE_TTL_SECONDS = 300
+# wix_client.py: short enough that new rows (from intake, or the Apps Script
+# writing directly into the Sheet) appear quickly, long enough that we don't
+# hammer the API.
+_LIST_CACHE_TTL_SECONDS = 30
 
 # Header row — exact column order in the sheet. '_id' is column 0 on purpose:
 # every existing call site (app.py) does record.get('_id'), carried over

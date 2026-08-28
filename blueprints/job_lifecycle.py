@@ -38,6 +38,18 @@ from core import (
 
 job_lifecycle = Blueprint("job_lifecycle", __name__)
 
+
+def _refresh_cms_snapshot(job_id: str, meta: dict) -> dict:
+    """Re-fetch a CMS job's live Sheet record into meta['cms_snapshot'] so
+    edits made outside this page load (intake, or another admin's save) show
+    up without requiring a full HTML reparse. No-op on a fetch failure so a
+    transient Sheets error doesn't blank out the last-known snapshot."""
+    record = _cms.get_project(meta.get("cms_item_id") or job_id)
+    if record:
+        meta["cms_snapshot"] = record
+        _save_meta(job_id, meta)
+    return meta
+
 # ─── Work order field layout ──────────────────────────────────────────
 # The work order, grouped to mirror the intake form. Each entry is (label, key)
 # where key is the Wix CMS field key — or a list of candidate keys (first one
@@ -337,6 +349,8 @@ def job_star(job_id: str):
     if job_dir.exists():
         meta = _load_meta(job_id)
         source = meta.get("source") or ("cms" if meta.get("cms_item_id") else "temp")
+        if source == "cms":
+            meta = _refresh_cms_snapshot(job_id, meta)
     else:
         # Not parsed yet — a CMS job opened straight from the landing list.
         record = _cms.get_project(job_id)
@@ -540,6 +554,8 @@ def job_invoice(job_id: str):
     if job_dir.exists():
         meta = _load_meta(job_id)
         source = meta.get("source") or ("cms" if meta.get("cms_item_id") else "temp")
+        if source == "cms":
+            meta = _refresh_cms_snapshot(job_id, meta)
     else:
         record = _cms.get_project(job_id)
         if not record:
@@ -571,6 +587,8 @@ def job_invoice(job_id: str):
 def results(job_id: str):
     job_dir = _job_dir(job_id)
     meta = _load_meta(job_id)
+    if meta.get("cms_item_id"):
+        meta = _refresh_cms_snapshot(job_id, meta)
 
     pdfs = []
     out_dir = job_dir / "out"
