@@ -255,8 +255,7 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       </div>
     </div>
 
-    {% if not signed %}
-    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Sign &amp; Submit</div><div class="divider-line"></div></div>
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Contract Terms</div><div class="divider-line"></div></div>
     <div class="card">
       <div class="card-header"><div class="card-title">Contract Terms</div></div>
 
@@ -300,6 +299,12 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
         <em>Third Parties:</em> Nothing contained in this Agreement shall create a contractual relationship with, or a cause of action in favor of, a third party against either Client or ADICOT, INC. ADICOT, INC&apos;s services hereunder are being performed solely for the benefit of Client, and no other entity shall have any claim against ADICOT, INC because of this Agreement or ADICOT, INC&apos;s performance of services hereunder.<br/><br/>
         <em>Consequential Damages:</em> Neither Client nor ADICOT, INC shall be liable to the other or shall make any claim for any incidental, indirect or consequential damages arising out of, or connected in any way to the Project or this Agreement. This mutual waiver includes, but is not limited to, damages related to loss of use, loss of profits, loss of income, loss of reputation, unrealized savings or diminution of property value and shall apply to any cause of action including negligence, strict liability, breach of contract and breach of warranty.
       </div>
+    </div>
+
+    {% if not signed %}
+    <div class="section-divider"><div class="divider-line"></div><div class="divider-label">Sign &amp; Submit</div><div class="divider-line"></div></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Agreement &amp; Signature</div></div>
 
       <div style="padding:4px 0 12px">
         <input type="checkbox" name="agree_terms_1" id="t1-real" style="display:none">
