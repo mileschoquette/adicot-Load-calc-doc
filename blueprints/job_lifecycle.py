@@ -415,6 +415,14 @@ def job_star_save(job_id: str):
         flash("Could not save the work order — the CMS record wasn't found or the write failed.")
         return redirect(url_for(".job_star", job_id=job_id))
 
+    old_code = (record.get("clientCode") or "").strip()
+    new_code = (fields.get("clientCode") or "").strip()
+    if new_code and new_code != old_code and record.get("driveFolderId"):
+        if gdrive_client.move_project_folder(record["driveFolderId"], new_code):
+            flash(f"Moved this project's Drive folder into {new_code}/.")
+        else:
+            flash("Client Code saved, but the Drive folder couldn't be moved automatically — move it by hand.")
+
     if send_link:
         token = portal_tokens.make_token(job_id, PORTAL_TOKEN_SECRET, days_valid=180)
         base = os.environ.get("PUBLIC_BASE_URL", "https://adicot-load-calc-doc.onrender.com")

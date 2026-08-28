@@ -18,6 +18,7 @@ Public functions:
     find_html(job_no)              -> (filename, bytes) | None
     get_submit_folder(job_no, ...) -> {"folder_id", "folder_url"} | None
     upload_files(job_no, files)    -> structured report (see docstring)
+    move_project_folder(id, code)  -> bool, reparents a project folder to 1-job/<code>/
     diagnose(job_no)               -> structured per-step report
     invalidate_cache()             -> clear cached folder IDs
 
@@ -697,6 +698,57 @@ def upload_files(job_no: str,
 
     result["ok"] = bool(result["uploaded"]) and not result["errors"]
     return result
+
+
+# ────────────────────────────────────────────────────────────────────
+# Public: move_project_folder
+# ────────────────────────────────────────────────────────────────────
+
+def move_project_folder(project_folder_id: str, new_client_code: str) -> bool:
+    """Reparent an existing project folder under 1-job/<new_client_code>/,
+    creating that Company folder if needed. True (no-op) if already there,
+    False/logged on any failure — never raises."""
+    if not project_folder_id or not new_client_code:
+        return False
+
+    service = _build_service()
+    if service is None:
+        return False
+
+    root_id = _find_one_jobs_root(service)
+    if not root_id:
+        return False
+
+    dest_id = _ensure_folder(service, root_id, new_client_code.strip())
+    if not dest_id:
+        return False
+
+    try:
+        meta = service.files().get(
+            fileId=project_folder_id, fields="parents", supportsAllDrives=True,
+        ).execute()
+    except Exception as e:
+        log.error("Drive parent lookup for %s failed: %s", project_folder_id, e)
+        return False
+
+    old_parents = meta.get("parents") or []
+    if dest_id in old_parents:
+        return True
+
+    try:
+        service.files().update(
+            fileId=project_folder_id,
+            addParents=dest_id,
+            removeParents=",".join(old_parents),
+            fields="id, parents",
+            supportsAllDrives=True,
+        ).execute()
+    except Exception as e:
+        log.error("Drive move of %s to %s failed: %s", project_folder_id, dest_id, e)
+        return False
+
+    invalidate_cache()
+    return True
 
 
 # ────────────────────────────────────────────────────────────────────
