@@ -124,10 +124,17 @@ class RoomInfoP1:
     @property
     def vbz_cfm(self) -> float | None:
         """Resolved breathing-zone OA in CFM. Sums the numbers in ventilation_cfm_text."""
-        nums = re.findall(r"-?\d+(?:\.\d+)?", self.ventilation_cfm_text or "")
+        # Strip thousands separators first: "2,225 CFM 389 CFM" is 2614, not 2 + 225 + 389.
+        text = (self.ventilation_cfm_text or "").replace(",", "")
+        nums = re.findall(r"-?\d+(?:\.\d+)?", text)
         if not nums:
             return None
         return sum(float(n) for n in nums)
+
+
+assert RoomInfoP1("SANCTUARY", "Public-Religious Worship", 6483, 12,
+                  "5 CFM / person 0.06 CFM / ft 2", "2,225 CFM 389 CFM",
+                  "", "", "", "").vbz_cfm == 2614
 
 
 @dataclass
