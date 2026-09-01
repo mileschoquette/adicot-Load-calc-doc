@@ -51,7 +51,7 @@
         <label for="ps_cooling_design_month">Cooling design month</label>
         <select id="ps_cooling_design_month" name="ps_cooling_design_month">
           <option value="">—</option>
-          {% for m in ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
+          {% for m in months %}
           <option value="{{ loop.index }}" {% if settings.cooling_design_month|string == loop.index|string %}selected{% endif %}>{{ m }}</option>
           {% endfor %}
         </select>

@@ -221,7 +221,7 @@ const SHEET_COLUMNS = [
   "clientPhone", "productService", "clientCode", "subClient", "community",
   "subdivision", "locationDisambig", "lennarJobNo", "engagementDays",
   "buildingStatus", "sf", "occupants", "orientation", "indoorTemp",
-  "indoorRH", "weatherData", "deckType", "roofCover", "roofColor",
+  "indoorRH", "weatherStation", "deckType", "roofCover", "roofColor",
   "roofRValue", "insulPosition", "suspCeiling", "atticCond", "ceilingHeight",
   "wallFinish", "wallConstruction", "wallColor", "wallRValue", "wallHeight",
   "partConstruction", "partRValue", "floorType", "floorRValue", "glassU",
@@ -241,6 +241,8 @@ const SHEET_COLUMNS = [
   "extLightDescription", "extLightCategory", "extLightNumLuminaires",
   "extLightWattsPerLuminaire", "extLightAreaLengthUnits", "extLightControlType",
   "osaLowDry", "osaDailyRange",
+  "awardPercent",
+  "osaHighMonth", "osaHighDry", "osaHighWet",
 ];
 
 function _getProjectsSheet() {
@@ -781,6 +783,9 @@ function _processIntakeThread(thread, processedLabel, intakeLabel) {
     extLightControlType:       merged.extLightControlType       || '',
     osaLowDry:          merged.osaLowDry          || '',
     osaDailyRange:      merged.osaDailyRange      || '',
+    osaHighMonth:       merged.osaHighMonth       || '',
+    osaHighDry:         merged.osaHighDry         || '',
+    osaHighWet:         merged.osaHighWet         || '',
     indoorTemp:         merged.indoorTemp         || '75',
     indoorRH:           merged.indoorRH           || '50',
     snippetProjectAddress:   snippets.titleBlock  || '',
@@ -1023,6 +1028,10 @@ function _extractFromAttachment(b64, mediaType, filename) {
       'ENERGY COMPLIANCE / MECHANICAL GENERAL NOTES (energy code compliance sheet, mechanical general notes):',
       '  - Winter design dry-bulb (osaLowDry) — look for "99% HEATING DB", "WINTER DESIGN TEMP", or an ASHRAE climate data table row for the design location',
       '  - Summer mean daily range (osaDailyRange) — look for "MEAN DAILY RANGE", "MDR", or the corresponding ASHRAE table column',
+      '  - Hottest month (osaHighMonth) — the month named as the cooling design month in an ASHRAE climate data table, e.g. "HOTTEST MONTH: JULY"; give the full month name',
+      '  - Cooling design dry-bulb (osaHighDry) — look for "1% COOLING DB", "COOLING DB/MCWB 1%", or "SUMMER DESIGN DB"',
+      '  - Mean coincident wet-bulb (osaHighWet) — the MCWB paired with that 1% cooling DB; look for "MCWB" or "MEAN COINCIDENT WET BULB"',
+      '  - For osaHighMonth/osaHighDry/osaHighWet, leave the field blank unless the drawings state the value outright. These three are looked up from ASHRAE by station when blank, and that lookup is authoritative — a guessed number would silently override it',
       '  - Indoor design temperature (indoorTemp) and relative humidity (indoorRH) — usually stated as a fixed assumption (e.g. "75°F / 50% RH"); only override the standard 75/50 default if the drawings explicitly state something different',
       '',
       'CLIENT / PROJECT IDENTITY:',
@@ -1151,6 +1160,9 @@ function _extractFromAttachment(b64, mediaType, filename) {
       '  "extLightControlType": string,',
       '  "osaLowDry": string,',
       '  "osaDailyRange": string,',
+      '  "osaHighMonth": string,',
+      '  "osaHighDry": string,',
+      '  "osaHighWet": string,',
       '  "indoorTemp": string,',
       '  "indoorRH": string,',
       '  "description": string,',
@@ -1271,7 +1283,8 @@ function _mergeExtractions(emailData, pdfExtractions) {
     'hwType','hwEfficiency','hwCapacityGal',
     'extLightDescription','extLightCategory','extLightNumLuminaires','extLightWattsPerLuminaire',
     'extLightAreaLengthUnits','extLightControlType',
-    'osaLowDry','osaDailyRange','indoorTemp','indoorRH','numStories',
+    'osaLowDry','osaDailyRange','osaHighMonth','osaHighDry','osaHighWet',
+    'indoorTemp','indoorRH','numStories',
     'description'];
 
   function _empty(v) { return v === null || v === undefined || v === '' || v === 0; }
@@ -1903,11 +1916,9 @@ function _addClientCode(clientCode, clientName, aliases) {
 
 function notifyProjectsSheet(data, sheetRowIndex) {
   try {
-    // ASHRAE 2025 outdoor design conditions for the proposal Specification block.
-    if (!data.weatherData && data.projectAddress) {
-      var _wx = getWeatherStationData(data.projectAddress);
-      data.weatherData = _wx ? JSON.stringify(_wx) : '';
-    }
+    // ASHRAE 2025 outdoor design conditions. Every value we keep is promoted to
+    // its own column below, so the station payload isn't stored as a blob.
+    var _wx = data.projectAddress ? getWeatherStationData(data.projectAddress) : null;
 
     var sheet = _getProjectsSheet();
     var id = data._id || _generateRowId();
@@ -1940,13 +1951,16 @@ function notifyProjectsSheet(data, sheetRowIndex) {
       sf: data.sf || 0,
       description: data.description || "",
       projectFolder: data.projectFolder || "",
-      weatherData: data.weatherData || "",
       // Prefer whatever Claude read off the drawings; fall back to the ASHRAE
       // station lookup (_wx, computed above) already run for this address.
+      weatherStation: data.weatherStation || (_wx && _wx.station) || "",
       latitude: data.latitude || (_wx && _wx.lat) || "",
       elevation: data.elevation || (_wx && _wx.elev) || "",
       osaLowDry: data.osaLowDry || (_wx && _wx.heatingDB99) || "",
       osaDailyRange: data.osaDailyRange || (_wx && _wx.hottestMonthDBRange) || "",
+      osaHighMonth: data.osaHighMonth || (_wx && _wx.hottestMonth) || "",
+      osaHighDry: data.osaHighDry || (_wx && _wx.coolingDB1) || "",
+      osaHighWet: data.osaHighWet || (_wx && _wx.coolingMCWB1) || "",
       indoorTemp: data.indoorTemp || "75",
       indoorRH: data.indoorRH || "50",
       numStories: data.numStories || "",
@@ -2086,48 +2100,11 @@ function _logToSheet(message) {
   } catch (_) {}
 }
 
-// One-time: fill weatherData on existing Projects from the Sheet's addresses.
-// Batched + resumable. Run it; if the log says "RUN AGAIN", run it again until
-// it logs "BACKFILL COMPLETE".
-//
-// STILL HITS WIX: this and sendReviewEmailForProject() below are manual, run-
-// from-the-editor utilities, not part of the automatic pipeline — left as-is
-// during the Wix cleanup since they're not reachable from any live trigger,
-// but they'll fail (or return stale data) since these Wix Velo functions may
-// no longer be maintained. Needs its own Sheets-based rewrite if ever needed
-// again.
-function backfillWeatherData() {
-  var listResp = UrlFetchApp.fetch(
-    'https://www.adicotengineeringinc.com/_functions/projectsNeedingWeather',
-    { muteHttpExceptions: true });
-  var list = JSON.parse(listResp.getContentText());
-  if (list.status !== 'ok') { Logger.log('list error: ' + listResp.getContentText().slice(0, 300)); return; }
-  var items = list.items || [];
-  Logger.log('Projects still needing weather: ' + list.total + ' (processing ' + items.length + ' this run)');
-
-  var done = 0, noAddr = 0, noStation = 0, failed = 0;
-  for (var k = 0; k < items.length; k++) {
-    var it = items[k];
-    if (!it.address || it.address.trim().length < 4) { noAddr++; continue; }
-    var w = getWeatherStationData(it.address);
-    if (!w) { noStation++; _logToSheet('backfill: no station for ' + (it.jobNo || it._id) + ' / ' + it.address); continue; }
-    try {
-      var resp = UrlFetchApp.fetch('https://www.adicotengineeringinc.com/_functions/setProjectWeather', {
-        method: 'post', contentType: 'application/json',
-        payload: JSON.stringify({ _id: it._id, weatherData: JSON.stringify(w) }),
-        muteHttpExceptions: true });
-      var r = JSON.parse(resp.getContentText());
-      if (r.status === 'ok') done++; else { failed++; _logToSheet('backfill ' + r.status + ' for ' + (it.jobNo || it._id)); }
-    } catch (e) { failed++; _logToSheet('backfill POST err ' + (it.jobNo || it._id) + ': ' + e.message); }
-    Utilities.sleep(800);
-  }
-  Logger.log('Batch: updated=' + done + ' noAddress=' + noAddr + ' noStation=' + noStation + ' failed=' + failed +
-             '. Remaining ≈ ' + (list.total - done) + '. RUN AGAIN until updated=0.');
-}
-
 // Manually fire the admin review notification email for a project added by
 // hand in the Wix CMS. Pass the CMS record _id. Run from the editor.
-// (See the WIX warning on backfillWeatherData above — same caveat applies.)
+// STILL HITS WIX: a manual, run-from-the-editor utility, not part of the
+// automatic pipeline. Left as-is during the Wix cleanup since no live
+// trigger reaches it, but it will fail or return stale data.
 function sendReviewEmailForProject(projectId) {
   if (!projectId) { Logger.log('Pass a CMS _id.'); return; }
   try {

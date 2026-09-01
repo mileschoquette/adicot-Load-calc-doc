@@ -12,7 +12,7 @@ from flask import Blueprint, abort, flash, redirect, request, render_template, s
 from werkzeug.utils import secure_filename
 
 from core import (
-    HAS_DM_SETUP_GENERATOR, _DM_SETUP_IMPORT_ERROR, dmsg,
+    HAS_DM_SETUP_GENERATOR, MONTH_NAMES, _DM_SETUP_IMPORT_ERROR, dmsg,
     _cms, _is_parsed, _load_meta, _load_report, _require_auth, _safe_job_path, _save_meta,
 )
 
@@ -185,27 +185,24 @@ def _dm_setup_job(job_id: str):
     return job_path, meta, {}, False
 
 
-_MONTH_NAMES = ("January", "February", "March", "April", "May", "June",
-                "July", "August", "September", "October", "November", "December")
-
-
 def _dm_setup_settings(meta: dict, report: dict | None = None) -> dict:
     """Prefill for the editable project settings. Weather station, latitude,
     elevation, osa_low_dry, and osa_daily_range are prefilled from the work
     order (CMS snapshot) first, falling back to the parsed .dm export
     (report.json) only when the work order is blank; overlaid with any
-    previously saved values. The tblMonth cooling design condition is
-    prefilled from the parsed .dm export only. The remaining site/solar
+    previously saved values. The tblMonth cooling design condition
+    (month/db/wb) follows the same work-order-first rule, which is what lets
+    a job be set up before its export has ever been parsed. The site/solar
     fields (longitude, standard meridian, dehumidification humidity ratio,
     clear-sky tau) have no DM field at all — they only ever come from a
     prior save."""
     snap = meta.get("cms_snapshot") or {}
     proj = (report or {}).get("project") or {}
 
-    month_name = proj.get("osa_high_month") or ""
+    month_name = snap.get("osaHighMonth") or proj.get("osa_high_month") or ""
     month_num = ""
-    if month_name in _MONTH_NAMES:
-        month_num = str(_MONTH_NAMES.index(month_name) + 1)
+    if month_name in MONTH_NAMES:
+        month_num = str(MONTH_NAMES.index(month_name) + 1)
 
     ps = {
         "project_name": meta.get("project_name") or snap.get("title") or "",
@@ -215,8 +212,8 @@ def _dm_setup_settings(meta: dict, report: dict | None = None) -> dict:
         "osa_low_dry": snap.get("osaLowDry") or proj.get("osa_low_f", ""),
         "osa_daily_range": snap.get("osaDailyRange") or proj.get("osa_daily_range_f", ""),
         "cooling_design_month": month_num,
-        "cooling_design_db": proj.get("osa_high_db_f", ""),
-        "cooling_design_wb": proj.get("osa_high_wb_f", ""),
+        "cooling_design_db": snap.get("osaHighDry") or proj.get("osa_high_db_f", ""),
+        "cooling_design_wb": snap.get("osaHighWet") or proj.get("osa_high_wb_f", ""),
         "longitude": "", "standard_meridian": "",
         "heating_design_percentile": "", "cooling_design_percentile": "",
         "dehumid_humidity_ratio": "", "clear_sky_taub": "", "clear_sky_taud": "",
@@ -261,7 +258,7 @@ def job_dm_setup(job_id: str):
     return render_template(
         "jobs/dm_setup.html",
         active_tab="dm-setup", job_id=job_id, meta=meta,
-        parsed=parsed, mass_options=_MASS_CLASS_OPTIONS,
+        parsed=parsed, mass_options=_MASS_CLASS_OPTIONS, months=MONTH_NAMES,
         settings=_dm_setup_settings(meta, report),
         grouped=grouped, selected=selected, used_in_lib=used_in_lib,
         lib_count=len(library), **con,

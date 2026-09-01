@@ -112,6 +112,15 @@ PORTAL_TOKEN_SECRET = os.environ.get("PORTAL_TOKEN_SECRET")
 # to update if an address changes.
 PERSON_EMAILS = {"miles": "mfc@adicot.com", "adi": "agc@adicot.com", "phoebe": "pc@adicot.com"}
 
+# ─── Calendar month names ────────────────────────────────────────────
+# One list, because two places have to agree on it: the Hottest Month
+# dropdown on the work order stores a name, and _dm_setup_settings() turns
+# that name back into DM's 1-12 month number via MONTH_NAMES.index(). If the
+# lists ever drifted the lookup would quietly yield "" and the SetCoolingMonth
+# call would vanish from the generated .vbs.
+MONTH_NAMES = ("January", "February", "March", "April", "May", "June",
+               "July", "August", "September", "October", "November", "December")
+
 
 def _require_auth(view):
     @functools.wraps(view)

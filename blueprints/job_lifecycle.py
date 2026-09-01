@@ -31,7 +31,7 @@ from pdf import html_pdf
 from pdf import pdf_combine
 
 from core import (
-    JOBS_DIR, PERSON_EMAILS, PORTAL_TOKEN_SECRET, _cms, _extract_state_code, _is_parsed, _job_dir,
+    JOBS_DIR, MONTH_NAMES, PERSON_EMAILS, PORTAL_TOKEN_SECRET, _cms, _extract_state_code, _is_parsed, _job_dir,
     _load_invoice_registry, _load_meta, _num_or_default,
     _parse_and_persist, _render_preview, _require_auth, _require_parsed,
     _safe_job_path, _save_meta,
@@ -101,6 +101,9 @@ _WORK_ORDER_SECTIONS = [
         ("Site Elevation", "elevation"),
         ("Winter Design Dry-Bulb", "osaLowDry"),
         ("Summer Mean Daily Range", "osaDailyRange"),
+        ("Hottest Month", "osaHighMonth"),
+        ("Cooling Design Dry-Bulb 1% (°F)", "osaHighDry"),
+        ("Mean Coincident Wet-Bulb 1% (°F)", "osaHighWet"),
         ("Number of Stories", "numStories"),
     ]),
     ("Roof & Ceiling", [
@@ -286,6 +289,7 @@ _FIELD_OPTIONS = {
     "hasStrip": ["Yes", "No"],
     "reviewComplete": ["Yes", "No"],
     "skylights": ["Yes", "No"],
+    "osaHighMonth": list(MONTH_NAMES),
     "projectState": _US_STATES,
 }
 
@@ -307,6 +311,10 @@ _EMAIL_SKIP_KEYS = {
     "jobNo", "title", "productService", "totalCost", "awardPercent", "status",
     "clientCode", "subClient", "community", "subdivision", "locationDisambig",
     "engagementDays", "reviewComplete", "signedDate",
+    # ASHRAE design conditions: table lookups intake does from the project
+    # address, not anything a client could answer if asked.
+    "weatherStation", "latitude", "elevation", "osaLowDry", "osaDailyRange",
+    "osaHighMonth", "osaHighDry", "osaHighWet",
 }
 
 

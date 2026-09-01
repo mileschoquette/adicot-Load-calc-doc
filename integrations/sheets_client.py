@@ -99,6 +99,7 @@ SHEET_COLUMNS = [
     "extLightWattsPerLuminaire", "extLightAreaLengthUnits", "extLightControlType",
     "osaLowDry", "osaDailyRange",
     "awardPercent",
+    "osaHighMonth", "osaHighDry", "osaHighWet",
 ]
 _COL_INDEX = {name: i for i, name in enumerate(SHEET_COLUMNS)}
 
