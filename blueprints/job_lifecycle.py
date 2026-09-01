@@ -290,12 +290,23 @@ _FIELD_OPTIONS = {
 }
 
 # Sections worth asking the client about in the "Save & Send to Client" draft
-# email's missing-info block. Excludes CRM/identity fields (Project & Client),
-# free-text notes, and internal Drive/snippet links — none of those are
-# something the client can usefully fill in on request.
+# email's missing-info block. Excludes free-text notes and internal
+# Drive/snippet links, which aren't something the client can usefully fill in.
 _EMAIL_MISSING_INFO_SECTIONS = {
+    "Project & Client",
     "Building Basics", "Roof & Ceiling", "Walls, Floor & Glass",
     "Internal Loads", "HVAC System", "Water Heating", "Exterior Lighting",
+}
+
+# CRM/bookkeeping fields living inside an otherwise client-facing section.
+# Adicot fills these in, so listing them as things "we still need from you"
+# would be asking the client for our own paperwork, and for Project & Client
+# would put the fee and the award split in front of them. Applied across every
+# section since none of these keys appear outside Project & Client.
+_EMAIL_SKIP_KEYS = {
+    "jobNo", "title", "productService", "totalCost", "awardPercent", "status",
+    "clientCode", "subClient", "community", "subdivision", "locationDisambig",
+    "engagementDays", "reviewComplete", "signedDate",
 }
 
 
@@ -354,7 +365,8 @@ def _missing_info_block(record: dict) -> str:
     for sec in _work_order_sections(record, include_empty=True):
         if sec["title"] not in _EMAIL_MISSING_INFO_SECTIONS:
             continue
-        missing = [row["label"] for row in sec["rows"] if not row["value"]]
+        missing = [row["label"] for row in sec["rows"]
+                   if not row["value"] and row["key"] not in _EMAIL_SKIP_KEYS]
         if missing:
             lines.append(f"{sec['title']}:")
             lines.extend(f"- {label}" for label in missing)
