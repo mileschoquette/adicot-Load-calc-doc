@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime
 import io
 import os
+import re
 import secrets
 import traceback
 from contextlib import redirect_stdout
@@ -77,6 +78,7 @@ _WORK_ORDER_SECTIONS = [
         ("Client Phone", "clientPhone"),
         ("Product / Service", "productService"),
         ("Price", "totalCost"),
+        ("Fee Structure", "feeStructure"),
         ("Status", "status"),
         ("Client Code", "clientCode"),
         ("Sub Client", "subClient"),
@@ -194,6 +196,66 @@ _US_STATES = [
     "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ]
 
+# ─── Fee structure ────────────────────────────────────────────────────
+# When the fee comes due, as a fraction payable at award. The keys are the
+# Fee Structure dropdown's options; an unrecognized or blank value falls back
+# to 0.0, i.e. the all-due-at-delivery terms the proposal used before this
+# field existed. Each entry also carries the fee-card note and the wording of
+# the client's payment-terms checkbox on portal.html.
+_FEE_STRUCTURES = {
+    "100% due at award": (
+        1.0,
+        "Due in full at award, before work begins",
+        "I agree to the payment terms: the full fee is due at award, before Adicot "
+        "begins work. Design changes are billed at $225/hr.",
+    ),
+    "50% at award / 50% at delivery": (
+        0.5,
+        "Half due at award, balance due upon Adicot submitting client-approved documents",
+        "I agree to the payment terms: 50% of the fee is due at award and the balance "
+        "upon Adicot submitting client-approved documents. Design changes are billed "
+        "at $225/hr.",
+    ),
+    "100% due at delivery": (
+        0.0,
+        "Due upon Adicot submitting client-approved documents",
+        "I agree to the payment terms: full fee due upon Adicot submitting "
+        "client-approved documents. Design changes are billed at $225/hr.",
+    ),
+}
+_FEE_AWARD_FRACTION = {k: v[0] for k, v in _FEE_STRUCTURES.items()}
+_FEE_DEFAULT = "100% due at delivery"
+
+
+def _fmt_money(amount: Optional[float]) -> str:
+    """$3,200 for whole dollars, $3,200.50 otherwise, em dash for None."""
+    if amount is None:
+        return "\u2014"
+    return f"${amount:,.0f}" if amount == int(amount) else f"${amount:,.2f}"
+
+
+def _fee_terms(record: dict) -> dict:
+    """Split totalCost into award/delivery amounts per the record's chosen fee
+    structure, and pick the matching proposal wording. totalCost is a free-text
+    display string ("3,200", "$3,200.00"), so it's parsed leniently: anything
+    unparseable leaves the amounts as em dashes while the wording still
+    reflects the structure."""
+    frac, note, terms_label = _FEE_STRUCTURES.get(
+        (record.get("feeStructure") or "").strip(), _FEE_STRUCTURES[_FEE_DEFAULT])
+    try:
+        total = float(re.sub(r"[^\d.]", "", str(record.get("totalCost") or "")))
+    except ValueError:
+        total = None
+    award = None if total is None else round(total * frac, 2)
+    return {
+        "note":         note,
+        "terms_label":  terms_label,
+        "total_disp":    _fmt_money(total),
+        "award_disp":    _fmt_money(award),
+        "delivery_disp": _fmt_money(None if total is None else round(total - award, 2)),
+    }
+
+
 # Option lists for jobs/star.html's admin dropdowns. The 19 non-boolean
 # entries are copied verbatim from portal.html's own <select> lists (the
 # client-facing intake form) so both pages offer the same choices. Booleans
@@ -228,6 +290,7 @@ _FIELD_OPTIONS = {
     "hasStrip": ["Yes", "No"],
     "reviewComplete": ["Yes", "No"],
     "skylights": ["Yes", "No"],
+    "feeStructure": list(_FEE_AWARD_FRACTION),
     "projectState": _US_STATES,
 }
 
@@ -473,6 +536,15 @@ def _portal_code_checks(record: dict) -> dict:
     return checks
 
 
+def _render_portal(record: dict, token: str, signed: bool):
+    """Every portal render goes through here so the fee split and the code-min
+    badges stay in sync across all five exit paths (signed, saved, rejected,
+    just-signed, plain GET)."""
+    return render_template("portal.html", job=record, token=token, signed=signed,
+                           code_checks={} if signed else _portal_code_checks(record),
+                           fee=_fee_terms(record))
+
+
 def _notify_staff_signed(job_id: str, record: dict, signer_name: str, signer_title: str) -> None:
     """Internal alert to Miles/Adi/Phoebe the moment a client signs — a
     plain SMTP send (not a Gmail draft) since this is staff-only, not
@@ -508,8 +580,7 @@ def portal(token: str):
         if already_signed:
             # Locked — re-render the success state rather than accept a second
             # submission over a still-valid link.
-            return render_template("portal.html", job=record, code_checks={},
-                                    signed=True, token=token)
+            return _render_portal(record, token, signed=True)
 
         # Collect every posted work-order field once — shared by both the
         # "save progress" and "sign" actions below, and written in exactly
@@ -530,16 +601,14 @@ def portal(token: str):
             _cms.update_project(job_id, posted_fields)
             record = _cms.get_project(job_id) or record
             flash("Progress saved. You can come back to this same link anytime to finish.")
-            return render_template("portal.html", job=record, code_checks=_portal_code_checks(record),
-                                    signed=False, token=token)
+            return _render_portal(record, token, signed=False)
 
         terms_ok = all(request.form.get(f"agree_terms_{i}") for i in (1, 2, 3))
         signer_name = (request.form.get("signer_name") or "").strip()
         signer_title = (request.form.get("signer_title") or "").strip()
         if not (terms_ok and signer_name and signer_title):
             flash("Please check all three agreement boxes and enter your name and title before signing.")
-            return render_template("portal.html", job=record, code_checks=_portal_code_checks(record),
-                                    signed=False, token=token)
+            return _render_portal(record, token, signed=False)
 
         # Everything the client answered PLUS the signature, in one batched
         # write — never one call per field.
@@ -556,11 +625,9 @@ def portal(token: str):
         _cms.update_project(job_id, posted_fields)
         record = _cms.get_project(job_id) or record
         _notify_staff_signed(job_id, record, signer_name, signer_title)
-        return render_template("portal.html", job=record, code_checks={}, signed=True, token=token)
+        return _render_portal(record, token, signed=True)
 
-    code_checks = {} if already_signed else _portal_code_checks(record)
-    return render_template("portal.html", job=record, code_checks=code_checks,
-                            signed=already_signed, token=token)
+    return _render_portal(record, token, signed=already_signed)
 
 
 @job_lifecycle.route("/job/<job_id>/invoice", methods=["GET"])

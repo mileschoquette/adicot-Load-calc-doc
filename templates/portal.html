@@ -12,7 +12,7 @@ Context this template assumes (all passed by the `portal` view):
                        jobNo, title, projectAddress, propertyOwner, owner,
                        clientName, clientCompany, clientEmail, clientPhone,
                        productService, status, totalCost (pre-formatted
-                       display string, e.g. "3,200"), feeDueAward,
+                       display string, e.g. "3,200"), feeStructure,
                        engagementDays, deliverablesOverride (newline-separated,
                        optional), plus every Building Basics / Roof & Ceiling /
                        Walls-Floor-Glass / Internal Loads / HVAC System field
@@ -220,11 +220,11 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
     </div>
     <div class="card">
       <div class="card-header"><div class="card-title">Fee</div></div>
-      <div class="fee-display">${{ job.totalCost or '&#8212;' }}</div>
-      <div class="fee-note">Due upon Adicot submitting client-approved documents</div>
+      <div class="fee-display">{{ fee.total_disp }}</div>
+      <div class="fee-note">{{ fee.note }}</div>
       <div class="fee-breakdown">
-        <div class="fee-line"><span>Due at award</span><span>{{ job.feeDueAward or '$0' }}</span></div>
-        <div class="fee-line"><span>Due at delivery</span><span>${{ job.totalCost or '&#8212;' }}</span></div>
+        <div class="fee-line"><span>Due at award</span><span>{{ fee.award_disp }}</span></div>
+        <div class="fee-line"><span>Due at delivery</span><span>{{ fee.delivery_disp }}</span></div>
         <div class="fee-line"><span>Additional changes</span><span>$225/hr</span></div>
       </div>
     </div>
@@ -315,7 +315,7 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
         <input type="checkbox" name="agree_terms_2" id="t2-real" style="display:none">
         <div class="terms-check-row" onclick="toggleTerms('t2')">
           <div class="terms-check-box" id="t2"> </div>
-          <div class="terms-check-label">I agree to the payment terms: full fee due upon Adicot submitting client-approved documents. Design changes are billed at $225/hr.</div>
+          <div class="terms-check-label">{{ fee.terms_label }}</div>
         </div>
         <input type="checkbox" name="agree_terms_3" id="t3-real" style="display:none">
         <div class="terms-check-row" onclick="toggleTerms('t3')">
