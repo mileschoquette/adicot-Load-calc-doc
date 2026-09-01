@@ -78,7 +78,7 @@ _WORK_ORDER_SECTIONS = [
         ("Client Phone", "clientPhone"),
         ("Product / Service", "productService"),
         ("Price", "totalCost"),
-        ("Fee Structure", "feeStructure"),
+        ("% Due at Award", "awardPercent"),
         ("Status", "status"),
         ("Client Code", "clientCode"),
         ("Sub Client", "subClient"),
@@ -197,34 +197,21 @@ _US_STATES = [
 ]
 
 # ─── Fee structure ────────────────────────────────────────────────────
-# When the fee comes due, as a fraction payable at award. The keys are the
-# Fee Structure dropdown's options; an unrecognized or blank value falls back
-# to 0.0, i.e. the all-due-at-delivery terms the proposal used before this
-# field existed. Each entry also carries the fee-card note and the wording of
-# the client's payment-terms checkbox on portal.html.
-_FEE_STRUCTURES = {
-    "100% due at award": (
-        1.0,
-        "Due in full at award, before work begins",
-        "I agree to the payment terms: the full fee is due at award, before Adicot "
-        "begins work. Design changes are billed at $225/hr.",
-    ),
-    "50% at award / 50% at delivery": (
-        0.5,
-        "Half due at award, balance due upon Adicot submitting client-approved documents",
-        "I agree to the payment terms: 50% of the fee is due at award and the balance "
-        "upon Adicot submitting client-approved documents. Design changes are billed "
-        "at $225/hr.",
-    ),
-    "100% due at delivery": (
-        0.0,
-        "Due upon Adicot submitting client-approved documents",
-        "I agree to the payment terms: full fee due upon Adicot submitting "
-        "client-approved documents. Design changes are billed at $225/hr.",
-    ),
-}
-_FEE_AWARD_FRACTION = {k: v[0] for k, v in _FEE_STRUCTURES.items()}
-_FEE_DEFAULT = "100% due at delivery"
+# awardPercent is the share of the fee due at award, entered as free text on
+# the Work Order. The fee card and the client's payment-terms checkbox on
+# portal.html are both derived from it, so a blank or unparseable value means
+# 0: the all-due-at-delivery terms the proposal used before this field existed.
+_HOURLY_NOTE = "Design changes are billed at $225/hr."
+
+
+def _num(value) -> Optional[float]:
+    """Lenient parse of a free-text money or percent string ("3,200", "50%").
+    Keeps a leading minus so a negative reaches the caller's clamp instead of
+    silently flipping sign."""
+    try:
+        return float(re.sub(r"[^\d.-]", "", str(value or "")))
+    except ValueError:
+        return None
 
 
 def _fmt_money(amount: Optional[float]) -> str:
@@ -235,21 +222,30 @@ def _fmt_money(amount: Optional[float]) -> str:
 
 
 def _fee_terms(record: dict) -> dict:
-    """Split totalCost into award/delivery amounts per the record's chosen fee
-    structure, and pick the matching proposal wording. totalCost is a free-text
-    display string ("3,200", "$3,200.00"), so it's parsed leniently: anything
-    unparseable leaves the amounts as em dashes while the wording still
-    reflects the structure."""
-    frac, note, terms_label = _FEE_STRUCTURES.get(
-        (record.get("feeStructure") or "").strip(), _FEE_STRUCTURES[_FEE_DEFAULT])
-    try:
-        total = float(re.sub(r"[^\d.]", "", str(record.get("totalCost") or "")))
-    except ValueError:
-        total = None
-    award = None if total is None else round(total * frac, 2)
+    """Split totalCost by the record's awardPercent and pick the proposal
+    wording that matches. Both fields are free text, so both parse leniently:
+    an out-of-range percent clamps to 0-100, and an unparseable price leaves
+    the amounts as em dashes while the wording still reflects the split."""
+    pct = min(max(_num(record.get("awardPercent")) or 0.0, 0.0), 100.0)
+    if pct >= 100:
+        note = "Due in full at award, before work begins"
+        terms = ("the full fee is due at award, before Adicot begins work. "
+                 f"{_HOURLY_NOTE}")
+    elif pct <= 0:
+        note = "Due upon Adicot submitting client-approved documents"
+        terms = ("full fee due upon Adicot submitting client-approved documents. "
+                 f"{_HOURLY_NOTE}")
+    else:
+        note = (f"{pct:g}% due at award, balance due upon Adicot submitting "
+                "client-approved documents")
+        terms = (f"{pct:g}% of the fee is due at award and the balance upon Adicot "
+                 f"submitting client-approved documents. {_HOURLY_NOTE}")
+
+    total = _num(record.get("totalCost"))
+    award = None if total is None else round(total * pct / 100, 2)
     return {
-        "note":         note,
-        "terms_label":  terms_label,
+        "note":          note,
+        "terms_label":   f"I agree to the payment terms: {terms}",
         "total_disp":    _fmt_money(total),
         "award_disp":    _fmt_money(award),
         "delivery_disp": _fmt_money(None if total is None else round(total - award, 2)),
@@ -290,7 +286,6 @@ _FIELD_OPTIONS = {
     "hasStrip": ["Yes", "No"],
     "reviewComplete": ["Yes", "No"],
     "skylights": ["Yes", "No"],
-    "feeStructure": list(_FEE_AWARD_FRACTION),
     "projectState": _US_STATES,
 }
 
