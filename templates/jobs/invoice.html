@@ -9,12 +9,22 @@
 </div>
 <p class="muted">{{ snap.jobNo or meta.project_address or "" }}{% if snap.jobNo and (meta.project_address or meta.project_name) %} — {% endif %}{{ meta.project_address or meta.project_name or "" }}</p>
 
+{% if invoice and invoice.manual %}
+  <p>
+    <span class="badge badge-ok">Invoiced</span>
+    <span class="muted small">marked manually{% if invoice.note %} &mdash; {{ invoice.note }}{% endif %}</span>
+  </p>
+  <form method="post" action="{{ url_for('job_lifecycle.job_invoice_unmark', job_id=job_id) }}">
+    <button type="submit" class="danger-link">Remove invoiced flag</button>
+  </form>
+{% endif %}
+
 {% if not qbo_status.connected %}
   <div class="drive-banner drive-banner-error">
     <strong>Not connected to QuickBooks.</strong>
     <a href="{{ url_for('quickbooks.quickbooks_admin') }}">Connect</a> first to create invoices.
   </div>
-{% elif invoice %}
+{% elif invoice and not invoice.manual %}
   <p>
     <a href="{{ invoice.url }}" target="_blank" rel="noopener">
       <span class="badge badge-ok">Invoiced</span>
@@ -268,6 +278,20 @@
     })();
   })();
   </script>
+{% endif %}
+
+{% if not invoice %}
+  <h3>Mark as invoiced</h3>
+  <p class="muted small">For work billed outside this app. Sets the same Invoiced flag
+    the QuickBooks route sets, without creating an invoice anywhere.</p>
+  <form method="post" action="{{ url_for('job_lifecycle.job_invoice_manual', job_id=job_id) }}">
+    <div class="field">
+      <label for="inv-manual-note">Note (optional)</label>
+      <input type="text" id="inv-manual-note" name="note"
+             placeholder="e.g. billed on the March retainer">
+    </div>
+    <button type="submit" class="btn-secondary">Mark as invoiced</button>
+  </form>
 {% endif %}
 
 {% endblock %}
