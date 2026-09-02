@@ -276,13 +276,15 @@ def _crop_authorized(req) -> bool:
 
 
 # ─── Job-list stage/bucket helpers ────────────────────────────────────
-# Job-list workflow stage, keyed by Wix item id. Independent of QuickBooks
-# invoicing (see _invoice_registry_path below) — a project's stage and its
-# invoiced-ness are separate facts and neither is cleaned up when the other
-# changes. Absence of a key (or a value outside VALID_STAGES) means "unset";
-# there is no stored "unset" literal.
-VALID_STAGES = {"green", "yellow", "red"}
-_STAGE_RANK = {"green": 0, "yellow": 1, "red": 2}
+# Job-list workflow stage, keyed by Wix item id. Absence of a key (or a value
+# outside VALID_STAGES) means "unset"; there is no stored "unset" literal.
+#
+# "invoiced" is a stage a human picks, for work billed outside this app. It is
+# separate from QuickBooks invoicing (see _invoice_registry_path below): a real
+# QBO invoice sets the same bucket via _entry_bucket without touching the stage
+# registry, and neither is cleaned up when the other changes.
+VALID_STAGES = {"green", "yellow", "red", "invoiced"}
+_STAGE_RANK = {"green": 0, "yellow": 1, "red": 2, "invoiced": 3}
 
 # A project with no stage ever set, whose Wix record is this old, is treated
 # as "expired" — sorted last and hidden by default, same as invoiced.
@@ -307,8 +309,11 @@ def _is_stale(created_date_str) -> bool:
 
 
 def _entry_bucket(e: dict) -> str:
-    """Which job-list filter bucket a project falls into. Invoiced takes
-    priority over expired, which takes priority over its plain stage."""
+    """Which job-list filter bucket a project falls into. A QuickBooks invoice
+    takes priority over expired, which takes priority over the plain stage.
+    The "invoiced" stage needs no special case: it falls through to the last
+    line and names its own bucket. Expired can't mask it either, since expiry
+    only applies to a project whose stage was never set."""
     if e["invoiced"]:
         return "invoiced"
     if e["expired"]:

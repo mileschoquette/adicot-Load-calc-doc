@@ -65,6 +65,7 @@
                   <option value="green"  {{ 'selected' if p.stage == 'green' }}>Ready to submit</option>
                   <option value="yellow" {{ 'selected' if p.stage == 'yellow' }}>Needs work</option>
                   <option value="red"    {{ 'selected' if p.stage == 'red' }}>Waiting on client</option>
+                  <option value="invoiced" {{ 'selected' if p.stage == 'invoiced' }}>Invoiced</option>
                 </select>
                 {% if p.expired %}<div class="muted small">Expired</div>{% endif %}
               </td>
@@ -108,7 +109,7 @@
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="green" checked> <span class="filter-swatch stage-green"></span> Ready to submit</label>
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="red" checked> <span class="filter-swatch stage-red"></span> Waiting on client</label>
       <label class="checkbox"><input type="checkbox" class="stage-filter" value="expired"> <span class="filter-swatch stage-expired"></span> Expired</label>
-      <label class="checkbox"><input type="checkbox" class="stage-filter" value="invoiced"> Invoiced</label>
+      <label class="checkbox"><input type="checkbox" class="stage-filter" value="invoiced"> <span class="filter-swatch stage-invoiced"></span> Invoiced</label>
     </div>
   </div>
 
