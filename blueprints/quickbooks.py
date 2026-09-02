@@ -204,9 +204,7 @@ def api_qbo_prepare(wix_id: str):
         "total_cost":  rec.get("totalCost"),
         "description": (rec.get("productService") or rec.get("description") or "").strip(),
         "suggested_customer_id": suggested,
-        # A manual flag is a placeholder, not a real invoice — it must not
-        # block the modal, or a hand-flagged job could never be billed properly.
-        "already_invoiced": bool(_load_invoice_registry().get(wix_id, {}).get("invoice_id")),
+        "already_invoiced": wix_id in _load_invoice_registry(),
         "pdfs": _drive_submit_files(job_no, folder_id=_job_drive_folder_id(wix_id)),
     })
 
@@ -219,9 +217,7 @@ def create_invoice_route(wix_id: str):
         return jsonify({"ok": False, "error": "Not connected to QuickBooks."}), 400
 
     reg = _load_invoice_registry()
-    # Only a real QBO invoice blocks a second one. A manual flag is overwritten
-    # by the invoice it was standing in for.
-    if reg.get(wix_id, {}).get("invoice_id"):
+    if wix_id in reg:
         return jsonify({"ok": False, "error": "This project has already been invoiced.",
                         "invoice": reg[wix_id]}), 409
 

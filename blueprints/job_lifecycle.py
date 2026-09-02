@@ -32,7 +32,7 @@ from pdf import pdf_combine
 
 from core import (
     JOBS_DIR, MONTH_NAMES, PERSON_EMAILS, PORTAL_TOKEN_SECRET, _cms, _extract_state_code, _is_parsed, _job_dir,
-    _load_invoice_registry, _load_meta, _num_or_default, _save_invoice_registry,
+    _load_invoice_registry, _load_meta, _num_or_default,
     _parse_and_persist, _render_preview, _require_auth, _require_parsed,
     _safe_job_path, _save_meta,
 )
@@ -677,53 +677,6 @@ def job_invoice(job_id: str):
         active_tab="invoice", job_id=job_id, meta=meta,
         qbo_status=qbo.connection_status(), invoice=invoice,
     )
-
-
-@job_lifecycle.route("/job/<job_id>/invoice/manual", methods=["POST"])
-@_require_auth
-def job_invoice_manual(job_id: str):
-    """Flag a job as invoiced by hand, for work billed outside this app. Writes
-    the same registry the QuickBooks route writes, so the dashboard badge, the
-    invoiced filter and the daily digest's exclusion all pick it up with no
-    changes; the "manual" marker is the only thing that tells the two apart."""
-    record = _cms.get_project(job_id)
-    if not record:
-        abort(404)
-
-    reg = _load_invoice_registry()
-    existing = reg.get(job_id)
-    if existing and not existing.get("manual"):
-        flash("This project already has a QuickBooks invoice.")
-        return redirect(url_for(".job_invoice", job_id=job_id))
-
-    reg[job_id] = {
-        "manual":    True,
-        "note":      (request.form.get("note") or "").strip(),
-        "job_no":    record.get("jobNo") or "",
-        "marked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    }
-    _save_invoice_registry(reg)
-    flash("Marked as invoiced.")
-    return redirect(url_for(".job_invoice", job_id=job_id))
-
-
-@job_lifecycle.route("/job/<job_id>/invoice/manual/delete", methods=["POST"])
-@_require_auth
-def job_invoice_unmark(job_id: str):
-    """Clear a manual invoiced flag. Refuses to touch a real QuickBooks entry —
-    deleting that would only desync this app from QBO, where the invoice still
-    exists."""
-    reg = _load_invoice_registry()
-    entry = reg.get(job_id)
-    if not entry:
-        flash("This project isn't flagged as invoiced.")
-    elif not entry.get("manual"):
-        flash("This project has a real QuickBooks invoice — void it in QuickBooks, not here.")
-    else:
-        del reg[job_id]
-        _save_invoice_registry(reg)
-        flash("Invoiced flag removed.")
-    return redirect(url_for(".job_invoice", job_id=job_id))
 
 
 # ─── Results page ─────────────────────────────────────────────────────

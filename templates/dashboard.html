@@ -89,9 +89,7 @@
                   <span class="muted small">—</span>
                 {% endif %}
                 {% if p.invoiced %}
-                  <span class="badge badge-ok"
-                        {% if p.invoiced_manual %}title="Marked invoiced by hand — no QuickBooks invoice"{% endif %}>
-                    Invoiced{% if p.invoiced_manual %} (manual){% endif %}</span>
+                  <span class="badge badge-ok">Invoiced</span>
                 {% endif %}
                 <button type="button" class="danger-link delete-btn"
                         data-id="{{ p._id }}"

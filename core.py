@@ -442,10 +442,6 @@ def _save_calendar_events_registry(events: list) -> None:
 # Maps Wix project id -> created-invoice record, so a project can't be invoiced
 # twice and the Invoices tab can show "Invoiced ✓". Lives on the persistent disk,
 # scoped per QBO environment so sandbox test invoices never block production ones.
-# An entry carrying "manual": True is a hand-set flag for work billed outside
-# this app — no QBO invoice exists behind it, so it has no invoice_id/url. Every
-# consumer of this registry treats both kinds as invoiced; only the QuickBooks
-# routes and the invoice tab look at the marker.
 # Read by the dashboard (_build_cms_entries / delete_cms_project) as well as by
 # the invoice tab and the quickbooks blueprint, so it lives here rather than in
 # blueprints/quickbooks.py.
@@ -518,7 +514,6 @@ def _build_cms_entries() -> list[dict]:
             "stage": stage,
             "expired": stage is None and _is_stale(p.get("createdDate")),
             "invoiced": _id in inv_reg,
-            "invoiced_manual": bool(inv_reg.get(_id, {}).get("manual")),
             "notes": notes_reg.get(_id, []),
             "assigned_to": assigned_reg.get(_id, []),
             "signed_date": signed_date.isoformat() if signed_date else None,
