@@ -255,11 +255,17 @@ def _fee_terms(record: dict) -> dict:
     }
 
 
-# Option lists for jobs/star.html's admin dropdowns. The 19 non-boolean
-# entries are copied verbatim from portal.html's own <select> lists (the
-# client-facing intake form) so both pages offer the same choices. Booleans
-# use Yes/No since _work_order_sections() already renders bool values that
-# way. Every field not listed here stays a plain text input.
+# The one list of allowed dropdown values. Drives jobs/star.html's admin
+# dropdowns AND portal.html's client-facing selects (passed in by
+# _render_portal), so the two pages can no longer drift apart — they used to
+# keep separate hand-copied lists. Booleans use Yes/No since
+# _work_order_sections() already renders bool values that way. Every field not
+# listed here stays a plain text input.
+#
+# KEEP IN SYNC with the extraction prompt in archive/wix-snapshot/
+# AdicotProjects.gs, which enumerates these same values so intake writes
+# "Metal frame" rather than "metal". That file is a separate deployment and
+# can't import this list.
 _FIELD_OPTIONS = {
     "buildingStatus": ["Tenant Buildout", "New Construction", "New Addition", "Renovation"],
     "orientation": ["North", "Northeast", "East", "Southeast", "South", "Southwest", "West", "Northwest"],
@@ -551,13 +557,30 @@ def _portal_code_checks(record: dict) -> dict:
     return checks
 
 
+def _canonical_options(record: dict) -> dict:
+    """Snap free-text dropdown values onto the exact option they match apart
+    from case or surrounding space, so intake's "slab on grade" selects the
+    real "Slab on grade" instead of falling through as unrecognised. Render-only
+    — the Sheet is never rewritten as a side effect of viewing a page. A value
+    that matches nothing is left exactly as it is, for portal.html to surface
+    as its own option rather than silently drop."""
+    out = dict(record)
+    for key, opts in _FIELD_OPTIONS.items():
+        val = (out.get(key) or "").strip()
+        if not val:
+            continue
+        out[key] = next((o for o in opts if o.lower() == val.lower()), out[key])
+    return out
+
+
 def _render_portal(record: dict, token: str, signed: bool):
     """Every portal render goes through here so the fee split and the code-min
     badges stay in sync across all five exit paths (signed, saved, rejected,
     just-signed, plain GET)."""
-    return render_template("portal.html", job=record, token=token, signed=signed,
+    return render_template("portal.html", job=_canonical_options(record),
+                           token=token, signed=signed,
                            code_checks={} if signed else _portal_code_checks(record),
-                           fee=_fee_terms(record))
+                           fee=_fee_terms(record), opts=_FIELD_OPTIONS)
 
 
 def _notify_staff_signed(job_id: str, record: dict, signer_name: str, signer_title: str) -> None:

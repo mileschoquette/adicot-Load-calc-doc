@@ -154,6 +154,26 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
 </style>
 </head>
 <body>
+{#- Every fixed-option select goes through this macro. `opts` is the one shared
+    list from blueprints/job_lifecycle.py (_FIELD_OPTIONS), and the value has
+    already been case-normalised by _canonical_options(). The final branch is
+    the important one: a value that still matches nothing is rendered as its
+    own selected option instead of being dropped. Without it the browser falls
+    back to the first option and the client's next save writes that fallback
+    over real intake data. `labels` overrides the display text for options
+    whose client-facing wording is richer than the stored value. -#}
+{% macro sel(name, value, options, labels={}, attrs='') %}
+<select class="field-input" name="{{ name }}" {{ attrs|safe }}>
+  <option value="">Select&#8230;</option>
+  {%- for o in options %}
+  <option value="{{ o }}" {% if value == o %}selected{% endif %}>{{ labels.get(o, o) }}</option>
+  {%- endfor %}
+  {%- if value and value not in options %}
+  <option value="{{ value }}" selected>{{ value }} (from your drawings)</option>
+  {%- endif %}
+</select>
+{%- endmacro %}
+
 
 <div class="page-wrap">
   {% with messages = get_flashed_messages() %}
@@ -358,12 +378,12 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
 
     <div class="card">
       <div class="card-header"><div class="card-title">Building Basics</div></div>
-      <div class="field-row"><label class="field-label">Building Status</label><select class="field-input" name="buildingStatus" id="inputStatus"><option value="">Select&#8230;</option><option value="Tenant Buildout" {% if job.buildingStatus == 'Tenant Buildout' %}selected{% endif %}>Tenant Buildout</option><option value="New Construction" {% if job.buildingStatus == 'New Construction' %}selected{% endif %}>New Construction</option><option value="New Addition" {% if job.buildingStatus == 'New Addition' %}selected{% endif %}>New Addition</option><option value="Renovation" {% if job.buildingStatus == 'Renovation' %}selected{% endif %}>Renovation</option></select></div>
+      <div class="field-row"><label class="field-label">Building Status</label>{{ sel('buildingStatus', job.buildingStatus, opts['buildingStatus'], attrs='id="inputStatus"') }}</div>
       <div class="two-col">
         <div class="field-row"><label class="field-label">Approx. Area (SF)</label><input class="field-input" type="text" name="sf" id="inputArea" placeholder="e.g. 1440" value="{{ job.sf or '' }}"></div>
         <div class="field-row"><label class="field-label">Total Occupants</label><input class="field-input" type="text" name="occupants" id="inputOccupants" placeholder="e.g. 43" value="{{ job.occupants or '' }}"></div>
       </div>
-      <div class="field-row"><label class="field-label">Primary Orientation (main facade faces)</label><select class="field-input" name="orientation" id="inputOrientation"><option value="">Select&#8230;</option>{% for opt in ['North','Northeast','East','Southeast','South','Southwest','West','Northwest'] %}<option value="{{ opt }}" {% if job.orientation == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="field-row"><label class="field-label">Primary Orientation (main facade faces)</label>{{ sel('orientation', job.orientation, opts['orientation'], attrs='id="inputOrientation"') }}</div>
       <div class="two-col">
         <div class="field-row"><label class="field-label">Weather Station</label><input class="field-input" type="text" name="weatherStation" value="{{ job.weatherStation or '' }}"></div>
         <div class="field-row"><label class="field-label">Number of Stories</label><input class="field-input" type="text" name="numStories" value="{{ job.numStories or '' }}"></div>
@@ -382,15 +402,15 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       <div class="card-header"><div class="card-title">Roof &amp; Ceiling</div></div>
       <div id="roofSpecificFields">
       <div class="two-col">
-        <div class="field-row"><label class="field-label">Deck / Frame Type</label><select class="field-input" name="deckType" id="inputDeckType"><option value="">Select&#8230;</option>{% for opt in ['Steel deck','Concrete deck','Wood deck','Metal frame','Wood frame','Other'] %}<option value="{{ opt }}" {% if job.deckType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
-        <div class="field-row"><label class="field-label">Roof Covering</label><select class="field-input" name="roofCover" id="inputRoofCover"><option value="">Select&#8230;</option>{% for opt in ['TPO','EPDM','BUR/Modified bitumen','Metal','Tile','Shingle','Other'] %}<option value="{{ opt }}" {% if job.roofCover == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">Deck / Frame Type</label>{{ sel('deckType', job.deckType, opts['deckType'], attrs='id="inputDeckType"') }}</div>
+        <div class="field-row"><label class="field-label">Roof Covering</label>{{ sel('roofCover', job.roofCover, opts['roofCover'], attrs='id="inputRoofCover"') }}</div>
       </div>
-      <div class="field-row"><label class="field-label">Roof Color</label><select class="field-input" name="roofColor" id="inputRoofColor"><option value="">Select&#8230;</option><option value="Light" {% if job.roofColor == 'Light' %}selected{% endif %}>Light (white, light gray, tan)</option><option value="Medium" {% if job.roofColor == 'Medium' %}selected{% endif %}>Medium (medium gray)</option><option value="Dark" {% if job.roofColor == 'Dark' %}selected{% endif %}>Dark (dark gray, dark brown)</option></select></div>
+      <div class="field-row"><label class="field-label">Roof Color</label>{{ sel('roofColor', job.roofColor, opts['roofColor'], labels={'Light': 'Light (white, light gray, tan)', 'Medium': 'Medium (medium gray)', 'Dark': 'Dark (dark gray, dark brown)'}, attrs='id="inputRoofColor"') }}</div>
       <div class="field-row"><label class="field-label">Roof R-Value</label><input class="field-input" type="text" name="roofRValue" id="inputRoofR" placeholder="e.g. R-30" value="{{ job.roofRValue or '' }}"></div>
       </div><!-- /roofSpecificFields -->
-      <div class="field-row"><label class="field-label">Suspended Ceiling Below Deck?</label><select class="field-input" name="suspCeiling" id="inputSuspCeil" onchange="checkAttic()"><option value="">Select&#8230;</option>{% for opt in ['Suspended ACT (T-bar)','GWB','Open to structure','Conditioned space above — no roof load','Other'] %}<option value="{{ opt }}" {% if job.suspCeiling == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="field-row"><label class="field-label">Suspended Ceiling Below Deck?</label>{{ sel('suspCeiling', job.suspCeiling, opts['suspCeiling'], attrs='id="inputSuspCeil" onchange="checkAttic()"') }}</div>
       <div class="cond-block" id="atticBlock" style="display:none">
-        <div class="field-row"><label class="field-label">Attic / Plenum Condition</label><select class="field-input" name="atticCond" id="inputAtticCond"><option value="">Select&#8230;</option>{% for opt in ['Sealed/conditioned plenum','Vented attic','None (flat roof)','Other'] %}<option value="{{ opt }}" {% if job.atticCond == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select><div class="hint">Vented vs. sealed affects CLTD roof type selection</div></div>
+        <div class="field-row"><label class="field-label">Attic / Plenum Condition</label>{{ sel('atticCond', job.atticCond, opts['atticCond'], attrs='id="inputAtticCond"') }}<div class="hint">Vented vs. sealed affects CLTD roof type selection</div></div>
       </div>
       <div class="field-row"><label class="field-label">Default Ceiling Height</label><input class="field-input" type="text" name="ceilingHeight" id="inputCeilHeight" placeholder="e.g. 10'-0&quot;" value="{{ job.ceilingHeight or '' }}"><div class="hint">Note exceptions in Project Notes</div></div>
     </div>
@@ -399,22 +419,22 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
       <div class="card-header"><div class="card-title">Walls, Floor &amp; Glass</div></div>
       <div class="wo-section-title">Exterior Walls</div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">Finish</label><select class="field-input" name="wallFinish" id="inputWallFinish"><option value="">Select&#8230;</option>{% for opt in ['Stucco','EIFS','Brick','Metal panel','Other'] %}<option value="{{ opt }}" {% if job.wallFinish == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
-        <div class="field-row"><label class="field-label">Construction</label><select class="field-input" name="wallConstruction" id="inputWallConst"><option value="">Select&#8230;</option>{% for opt in ['CMU','CMU + rigid insul','ICF','Steel stud + batt','Steel stud + rigid insul','Wood frame','Other'] %}<option value="{{ opt }}" {% if job.wallConstruction == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">Finish</label>{{ sel('wallFinish', job.wallFinish, opts['wallFinish'], attrs='id="inputWallFinish"') }}</div>
+        <div class="field-row"><label class="field-label">Construction</label>{{ sel('wallConstruction', job.wallConstruction, opts['wallConstruction'], attrs='id="inputWallConst"') }}</div>
       </div>
       <div class="three-col">
-        <div class="field-row"><label class="field-label">Color</label><select class="field-input" name="wallColor" id="inputWallColor"><option value="">Select&#8230;</option><option value="Light" {% if job.wallColor == 'Light' %}selected{% endif %}>Light</option><option value="Medium" {% if job.wallColor == 'Medium' %}selected{% endif %}>Medium</option><option value="Dark" {% if job.wallColor == 'Dark' %}selected{% endif %}>Dark</option></select></div>
+        <div class="field-row"><label class="field-label">Color</label>{{ sel('wallColor', job.wallColor, opts['wallColor'], labels={'Light': 'Light (white, light gray, tan)', 'Medium': 'Medium (medium gray)', 'Dark': 'Dark (dark gray, dark brown)'}, attrs='id="inputWallColor"') }}</div>
         <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" name="wallRValue" id="inputWallR" placeholder="e.g. R-6" value="{{ job.wallRValue or '' }}"></div>
         <div class="field-row"><label class="field-label">Exterior Wall Height</label><input class="field-input" type="text" name="wallHeight" id="inputWallHeight" placeholder="e.g. 14'-0&quot;" value="{{ job.wallHeight or '' }}"></div>
       </div>
       <div class="wo-section-title" style="margin-top:8px">Partition Walls</div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">Construction</label><select class="field-input" name="partConstruction" id="inputPartConst"><option value="NA" {% if job.partConstruction == 'NA' %}selected{% endif %}>NA &#8212; no insulated partitions</option>{% for opt in ['Metal stud (steel frame)','Wood stud','Concrete Block / CMU'] %}<option value="{{ opt }}" {% if job.partConstruction == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">Construction</label>{{ sel('partConstruction', job.partConstruction, opts['partConstruction'], labels={'NA': 'NA — no insulated partitions'}, attrs='id="inputPartConst"') }}</div>
         <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" name="partRValue" id="inputPartR" placeholder="NA or R-value" value="{{ job.partRValue or '' }}"></div>
       </div>
       <div class="wo-section-title" style="margin-top:8px">Flooring</div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">Type</label><select class="field-input" name="floorType" id="inputFloorType"><option value="">Select&#8230;</option><option value="Slab on grade" {% if job.floorType == 'Slab on grade' %}selected{% endif %}>Slab on grade &#8212; no floor load</option><option value="Floor over conditioned space" {% if job.floorType == 'Floor over conditioned space' %}selected{% endif %}>Floor over conditioned space &#8212; no floor load</option><option value="Floor over unconditioned space" {% if job.floorType == 'Floor over unconditioned space' %}selected{% endif %}>Floor over unconditioned space (parking garage, crawl space)</option><option value="Wood frame over unconditioned space" {% if job.floorType == 'Wood frame over unconditioned space' %}selected{% endif %}>Wood frame over unconditioned space</option><option value="Elevated / exterior exposure" {% if job.floorType == 'Elevated / exterior exposure' %}selected{% endif %}>Elevated / exterior exposure (piers, cantilever)</option></select></div>
+        <div class="field-row"><label class="field-label">Type</label>{{ sel('floorType', job.floorType, opts['floorType'], labels={'Slab on grade': 'Slab on grade — no floor load', 'Floor over conditioned space': 'Floor over conditioned space — no floor load', 'Floor over unconditioned space': 'Floor over unconditioned space (parking garage, crawl space)', 'Elevated / exterior exposure': 'Elevated / exterior exposure (piers, cantilever)'}, attrs='id="inputFloorType"') }}</div>
         <div class="field-row"><label class="field-label">R-Value</label><input class="field-input" type="text" name="floorRValue" id="inputFloorR" placeholder="NONE or R-value" value="{{ job.floorRValue or '' }}"></div>
       </div>
       <div class="wo-section-title" style="margin-top:8px">Glass</div>
@@ -426,12 +446,12 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
           <div class="field-row"><label class="field-label">SHGC</label><input class="field-input" type="text" name="glassSHGC" id="inputFixedSHGC" placeholder="e.g. 0.24" value="{{ job.glassSHGC or '' }}"></div>
         </div>
       </div>
-      <div class="field-row"><label class="field-label">Opaque Door Type</label><select class="field-input" name="doorType" id="inputDoorType"><option value="">Select&#8230;</option>{% for opt in ['Insulated Metal','Hollow metal','Solid wood','Storefront/glass','None'] %}<option value="{{ opt }}" {% if job.doorType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="field-row"><label class="field-label">Opaque Door Type</label>{{ sel('doorType', job.doorType, opts['doorType'], attrs='id="inputDoorType"') }}</div>
     </div>
 
     <div class="card">
       <div class="card-header"><div class="card-title">Internal Loads</div></div>
-      <div class="field-row"><label class="field-label">Occupancy Type</label><select class="field-input" name="occupancyType" id="inputOccType" onchange="updateOccDefaults()"><option value="">Select&#8230;</option>{% for opt in ['Dining / Fast food','Food prep / Kitchen','Office','Retail','Medical office','Assembly / Classrooms','Warehouse','Residential','Other'] %}<option value="{{ opt }}" {% if job.occupancyType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+      <div class="field-row"><label class="field-label">Occupancy Type</label>{{ sel('occupancyType', job.occupancyType, opts['occupancyType'], attrs='id="inputOccType" onchange="updateOccDefaults()"') }}</div>
       <div class="two-col">
         <div class="field-row">
           <label class="field-label">Lighting W/SF</label>
@@ -452,18 +472,18 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
           <div class="field-row"><label class="field-label">Makeup Air provided (if known)</label><input class="field-input" type="text" name="makeupAirCFM" id="inputMakeupAir" placeholder="CFM or N/A" value="{{ job.makeupAirCFM or '' }}"></div>
         </div>
       </div>
-      <div class="field-row"><label class="field-label">Construction Quality</label><select class="field-input" name="infiltration" id="inputInfiltration"><option value="">Select&#8230;</option><option value="Tight" {% if job.infiltration == 'Tight' %}selected{% endif %}>Tight &#8212; well-sealed new construction (~0.15 ACH)</option><option value="Average" {% if job.infiltration == 'Average' %}selected{% endif %}>Average (~0.35 ACH)</option><option value="Loose" {% if job.infiltration == 'Loose' %}selected{% endif %}>Loose &#8212; older building, frequent door use (~0.50 ACH)</option></select></div>
+      <div class="field-row"><label class="field-label">Construction Quality</label>{{ sel('infiltration', job.infiltration, opts['infiltration'], labels={'Tight': 'Tight (~0.15 ACH)', 'Average': 'Average (~0.35 ACH)', 'Loose': 'Loose (~0.60 ACH)'}, attrs='id="inputInfiltration"') }}</div>
     </div>
 
     <div class="card">
       <div class="card-header"><div class="card-title">HVAC System</div></div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">New or Existing?</label><select class="field-input" name="acNewExisting" id="inputACNew"><option value="">Select&#8230;</option><option value="New" {% if job.acNewExisting == 'New' %}selected{% endif %}>New</option><option value="Existing — reuse" {% if job.acNewExisting == 'Existing — reuse' %}selected{% endif %}>Existing &#8212; reuse</option><option value="Mix of both" {% if job.acNewExisting == 'Mix of both' %}selected{% endif %}>Mix of both</option></select></div>
-        <div class="field-row"><label class="field-label">Mounting Location</label><select class="field-input" name="acMounting" id="inputACMount"><option value="">Select&#8230;</option>{% for opt in ['Ground-level slab','Rooftop','Sidewall','Other'] %}<option value="{{ opt }}" {% if job.acMounting == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">New or Existing?</label>{{ sel('acNewExisting', job.acNewExisting, opts['acNewExisting'], attrs='id="inputACNew"') }}</div>
+        <div class="field-row"><label class="field-label">Mounting Location</label>{{ sel('acMounting', job.acMounting, opts['acMounting'], attrs='id="inputACMount"') }}</div>
       </div>
       <div class="two-col">
-        <div class="field-row"><label class="field-label">System Type</label><select class="field-input" name="hvacType" id="inputHvacType"><option value="">Select&#8230;</option>{% for opt in ['Split','Package','Mini-split','VRF','PTAC','Other'] %}<option value="{{ opt }}" {% if job.hvacType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
-        <div class="field-row"><label class="field-label">Heat Type</label><select class="field-input" name="heatType" id="inputHeatType"><option value="">Select&#8230;</option>{% for opt in ['Heat Pump','Heat Strip','Gas Furnace','Other'] %}<option value="{{ opt }}" {% if job.heatType == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}</select></div>
+        <div class="field-row"><label class="field-label">System Type</label>{{ sel('hvacType', job.hvacType, opts['hvacType'], attrs='id="inputHvacType"') }}</div>
+        <div class="field-row"><label class="field-label">Heat Type</label>{{ sel('heatType', job.heatType, opts['heatType'], attrs='id="inputHeatType"') }}</div>
       </div>
     </div>
 
