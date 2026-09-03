@@ -29,7 +29,17 @@ def build_all_pdfs(html_path: Path, config: ProjectConfig,
                    engineer: EngineerInfo, firm: FirmInfo,
                    out_dir: Path = Path("./pdfs"),
                    project_name: str | None = None,
-                   zone_overrides: dict | None = None) -> dict:
+                   zone_overrides: dict | None = None,
+                   select: set[str] | None = None) -> dict:
+    """Build the schedule deliverables into out_dir.
+
+    select limits the run to specific artifacts, named "<schedule>_xlsx" /
+    "<schedule>_pdf" (e.g. "ventilation_pdf", "load_xlsx"). None means build
+    everything, so callers that don't care are unaffected. A schedule whose
+    PDF is wanted without its xlsx still has to render the xlsx, since the PDF
+    is a LibreOffice conversion of it; that intermediate goes to a temp dir so
+    an unselected .xlsx already in out_dir is never silently overwritten.
+    """
     out_dir.mkdir(exist_ok=True)
     html_text = html_path.read_text(encoding="latin-1")
     report = parse_report(html_text)
@@ -44,6 +54,7 @@ def build_all_pdfs(html_path: Path, config: ProjectConfig,
     # cleanly into AutoCAD). If LibreOffice isn't available (local dev) or a
     # conversion fails, fall back to the ReportLab renderer so a PDF always
     # exists. Conversions run one at a time to keep the memory peak low.
+    import tempfile
     import traceback
     from pdf import schedule_xlsx
     from pdf import xlsx_to_pdf
@@ -64,18 +75,29 @@ def build_all_pdfs(html_path: Path, config: ProjectConfig,
     keymap = {"Ventilation": "ventilation_schedule",
               "Air_Balance": "air_balance", "Load": "load_summary"}
     for key, build_xlsx, build_pdf_fallback in schedules:
-        xlsx_path = out_dir / f"{safe}-{key}.xlsx"
+        want_xlsx = select is None or f"{key.lower()}_xlsx" in select
+        want_pdf = select is None or f"{key.lower()}_pdf" in select
+        if not (want_xlsx or want_pdf):
+            continue
+
         pdf_path = out_dir / f"{safe}-{key}.pdf"
-        try:
-            build_xlsx(xlsx_path)
-            out["xlsx"][keymap[key]] = xlsx_path
-        except Exception:
-            traceback.print_exc()
-        converted = xlsx_to_pdf.convert(xlsx_path, pdf_path)
-        if not converted:
-            # LibreOffice missing or conversion failed → keep a PDF deliverable.
-            build_pdf_fallback(pdf_path)
-        out[keymap[key]] = pdf_path
+        # Keep the xlsx out of out_dir when it wasn't asked for; it's only
+        # needed as conversion input in that case.
+        with tempfile.TemporaryDirectory() as scratch:
+            xlsx_path = ((out_dir if want_xlsx else Path(scratch))
+                         / f"{safe}-{key}.xlsx")
+            try:
+                build_xlsx(xlsx_path)
+                if want_xlsx:
+                    out["xlsx"][keymap[key]] = xlsx_path
+            except Exception:
+                traceback.print_exc()
+            if want_pdf:
+                converted = xlsx_to_pdf.convert(xlsx_path, pdf_path)
+                if not converted:
+                    # LibreOffice missing or conversion failed → still deliver a PDF.
+                    build_pdf_fallback(pdf_path)
+                out[keymap[key]] = pdf_path
 
     return out
 

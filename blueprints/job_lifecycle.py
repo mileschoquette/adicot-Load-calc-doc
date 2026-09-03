@@ -713,17 +713,7 @@ def results(job_id: str):
     if meta.get("cms_item_id"):
         meta = _refresh_cms_snapshot(job_id, meta)
 
-    pdfs = []
-    out_dir = job_dir / "out"
-    if out_dir.exists():
-        # The 4 PDFs (3 schedules + Combined) plus the 3 schedule Excel sources
-        # that each schedule PDF is rendered from. Equipment/spec files live on
-        # their own tabs and are intentionally excluded here.
-        deliverables = list(out_dir.glob("*.pdf"))
-        for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
-            deliverables += out_dir.glob(f"*{suffix}")
-        for p in sorted(deliverables):
-            pdfs.append({"name": p.name, "size_kb": f"{p.stat().st_size / 1024:.0f}"})
+    deliverables = _deliverable_rows(job_dir / "out")
 
     cms_job_no = ""
     if meta.get("cms_snapshot"):
@@ -742,7 +732,7 @@ def results(job_id: str):
         active_tab="pdfs",
         job_id=job_id,
         meta=meta,
-        pdfs=pdfs,
+        deliverables=deliverables,
         cms_job_no=cms_job_no,
         drive_push=meta.get("drive_push"),
         saved_overrides=saved_overrides,
@@ -810,6 +800,48 @@ def _push_deliverables_to_drive(cms_job_no: str, drive_folder_id: str | None,
         print(f"DRIVE PUSH FAILURE: {tb}", flush=True)
         drive_push = {"status": "error", "reason": f"{type(e).__name__}: {e}", "job_no": cms_job_no}
     return drive_push
+
+
+# ─── Generatable deliverables ─────────────────────────────────────────
+# The 4 PDFs (3 schedules + Combined) plus the 3 schedule Excel sources each
+# schedule PDF is converted from. Equipment/spec files live on their own tabs
+# and are deliberately excluded. Single source for the Generate form's
+# checkboxes, for resolving a checked key back to a file on disk, and for the
+# Drive upload set.
+#
+# Keys match what hvac_pipeline.build_all_pdfs(select=...) expects, except
+# "combined_pdf", which this blueprint builds itself via _rebuild_combined.
+_DELIVERABLES = [
+    ("ventilation_xlsx", "Ventilation Schedule", "Excel", "-Ventilation.xlsx"),
+    ("ventilation_pdf",  "Ventilation Schedule", "PDF",   "-Ventilation.pdf"),
+    ("air_balance_xlsx", "Air Balance",          "Excel", "-Air_Balance.xlsx"),
+    ("air_balance_pdf",  "Air Balance",          "PDF",   "-Air_Balance.pdf"),
+    ("load_xlsx",        "Load Summary",         "Excel", "-Load.xlsx"),
+    ("load_pdf",         "Load Summary",         "PDF",   "-Load.pdf"),
+    ("combined_pdf",     "Combined",             "PDF",   "-Combined.pdf"),
+]
+_DELIVERABLE_KEYS = [d[0] for d in _DELIVERABLES]
+
+
+def _deliverable_path(out_dir: Path, suffix: str) -> Optional[Path]:
+    """The existing file for a deliverable suffix, or None. The <prefix> is
+    derived from the project name inside the pipeline, so it can only be
+    discovered by globbing, never predicted before the first generate."""
+    return next(iter(sorted(out_dir.glob(f"*{suffix}"))), None)
+
+
+def _deliverable_rows(out_dir: Path) -> list[dict]:
+    """One row per deliverable for the Generate form: always present so the
+    first run is selectable too, carrying name/size only once the file exists."""
+    rows = []
+    for key, label, kind, suffix in _DELIVERABLES:
+        path = _deliverable_path(out_dir, suffix) if out_dir.exists() else None
+        rows.append({
+            "key": key, "label": label, "kind": kind,
+            "name": path.name if path else None,
+            "size_kb": f"{path.stat().st_size / 1024:.0f}" if path else None,
+        })
+    return rows
 
 
 # ─── Combined-PDF / chart-appendix helpers ────────────────────────────
@@ -925,6 +957,18 @@ def generate_pdfs(job_id: str):
     config, engineer = _config_and_engineer_from_meta(meta)
     firm = hp.FirmInfo()
 
+    # Which deliverables this run should build. The form always posts
+    # has_selection; its absence means a non-form caller, so build everything
+    # rather than silently doing nothing. Present-but-empty is a real "nothing
+    # checked" and must not be treated as "all".
+    if "has_selection" in request.form:
+        select = set(request.form.getlist("gen")) & set(_DELIVERABLE_KEYS)
+        if not select:
+            flash("Nothing selected — pick at least one file to generate.")
+            return redirect(url_for(".results", job_id=job_id))
+    else:
+        select = set(_DELIVERABLE_KEYS)
+
     try:
         with redirect_stdout(io.StringIO()):
             hp.build_all_pdfs(
@@ -934,6 +978,7 @@ def generate_pdfs(job_id: str):
                 firm=firm,
                 out_dir=out_dir,
                 zone_overrides=meta.get("zone_overrides") or {},
+                select=select,
             )
     except Exception:
         tb = traceback.format_exc()
@@ -948,32 +993,37 @@ def generate_pdfs(job_id: str):
         flash("PDF generation failed — check the Render logs for the traceback.")
         return redirect(url_for(".results", job_id=job_id))
 
-    meta["pdfs_generated"] = True
+    meta["pdfs_generated"] = any(
+        _deliverable_path(out_dir, sfx) for _k, _l, _kind, sfx in _DELIVERABLES
+        if sfx.endswith(".pdf"))
 
     # Render the scraped DM HTML once, append it to the standalone Load PDF, and
     # build the combined with the same appendix dead last (after the charts).
     appendix = _html_appendix_bytes(job_dir, meta)
-    _append_html_to_load(job_dir, meta, appendix)
 
-    # Build the combined PDF (3 deliverables + selected charts + HTML) before the
-    # Drive push so it rides along with the *.pdf upload below.
-    _rebuild_combined(job_dir, meta, appendix=appendix)
+    # Only when the Load PDF was actually rebuilt. _append_html_to_load must run
+    # on a freshly written clean Load PDF: re-running it on an untouched one
+    # would append a second copy of the appendix, and it resets
+    # meta['load_clean_pages'], which the combiner needs to keep the appendix to
+    # a single copy. Skipping it leaves the previous run's value intact.
+    if "load_pdf" in select:
+        _append_html_to_load(job_dir, meta, appendix)
+
+    # Combines whatever deliverable PDFs are on disk, so a partial run correctly
+    # mixes what was just rebuilt with what was already there.
+    if "combined_pdf" in select:
+        _rebuild_combined(job_dir, meta, appendix=appendix)
 
     cms_snapshot = meta.get("cms_snapshot") or {}
     cms_job_no = (cms_snapshot.get("jobNo") or "").strip()
     drive_folder_id = meta.get("drive_folder_id")   # manually chosen job folder, if any
 
-    upload_targets = list(out_dir.glob("*.pdf"))
-    for suffix in ("-Ventilation.xlsx", "-Air_Balance.xlsx", "-Load.xlsx"):
-        upload_targets += out_dir.glob(f"*{suffix}")
-
-    # The results page always shows checkboxes for these same 7 files once
-    # they exist; "has_selection" is only present on that form (absent on the
-    # very first Generate, before there's anything to check), so its absence
-    # here means "push everything," not "nothing was selected."
-    if "has_selection" in request.form:
-        chosen_names = set(request.form.getlist("files"))
-        upload_targets = [p for p in upload_targets if p.name in chosen_names]
+    # Push exactly what was selected (and actually landed on disk). An
+    # unchecked deliverable is left alone in Drive as well as locally.
+    upload_targets = [
+        path for key, _l, _kind, sfx in _DELIVERABLES if key in select
+        for path in [_deliverable_path(out_dir, sfx)] if path
+    ]
 
     if not upload_targets:
         meta["drive_push"] = {"status": "skipped", "reason": "no files selected for Drive upload"}
@@ -1075,6 +1125,9 @@ def commit_settings(job_id: str):
 
     try:
         with redirect_stdout(io.StringIO()):
+            # No select= here on purpose: changed settings invalidate all three
+            # schedules, so this path always rebuilds the full set. Picking a
+            # subset is the Generate form's job.
             hp.build_all_pdfs(
                 html_path=html_path,
                 config=config,

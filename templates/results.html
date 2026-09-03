@@ -38,32 +38,42 @@
   </form>
 {% endif %}
 
-{% if pdfs %}
-  <p class="muted">Click any file to download. Uncheck files below to skip uploading them to Drive, then regenerate.</p>
+<p class="muted">
+  Pick what to build on this run. Unchecked files are left exactly as they are &mdash;
+  not rebuilt, not re-uploaded &mdash; and stay downloadable below.
+  {% if cms_job_no %}
+    Checked files are pushed to
+    <code>1-job/{{ cms_job_no.split("-", 1)[0] }}/{{ cms_job_no }}/6-Submit/</code> on Google Drive.
+  {% endif %}
+</p>
 
-  <form method="post" action="{{ url_for('job_lifecycle.generate_pdfs', job_id=job_id) }}">
-    <input type="hidden" name="has_selection" value="1">
-    <div class="pdf-list-toolbar" style="display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem;">
-      <label class="checkbox">
-        <input type="checkbox" id="pdf-select-all" checked>
-        Select all
-      </label>
-    </div>
+<form method="post" action="{{ url_for('job_lifecycle.generate_pdfs', job_id=job_id) }}">
+  <input type="hidden" name="has_selection" value="1">
+  <div class="pdf-list-toolbar" style="display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem;">
+    <label class="checkbox">
+      <input type="checkbox" id="pdf-select-all" checked>
+      Select all
+    </label>
+  </div>
 
-    <ul class="pdf-list">
-      {% for pdf in pdfs %}
-        <li>
-          <input type="checkbox" class="pdf-checkbox" name="files" value="{{ pdf.name }}" checked>
-          <a href="{{ url_for('job_lifecycle.download_file', job_id=job_id, filename=pdf.name) }}">{{ pdf.name }}</a>
-          <span class="muted">({{ pdf.size_kb }} KB)</span>
-          {% if pdf.name.endswith("-Combined.pdf") %}<span class="badge">Combined</span>{% endif %}
-        </li>
-      {% endfor %}
-    </ul>
+  <ul class="pdf-list">
+    {% for d in deliverables %}
+      <li>
+        <input type="checkbox" class="pdf-checkbox" name="gen" value="{{ d.key }}" checked>
+        {{ d.label }} <span class="muted">({{ d.kind }})</span>
+        {% if d.name %}
+          &mdash; <a href="{{ url_for('job_lifecycle.download_file', job_id=job_id, filename=d.name) }}">{{ d.name }}</a>
+          <span class="muted">({{ d.size_kb }} KB)</span>
+        {% else %}
+          <span class="muted">&mdash; not generated yet</span>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
 
-    <button type="submit" class="btn-secondary">Regenerate PDFs &amp; Upload Selected to Drive</button>
-    <span class="muted">Overwrites existing files{% if cms_job_no %} and uploads the checked files to Drive{% endif %}.</span>
-  </form>
+  <button type="submit" class="btn-primary">Generate Selected</button>
+  <span class="muted">Overwrites the checked files{% if cms_job_no %} and uploads them to Drive{% endif %}.</span>
+</form>
 
   {% if drive_push %}
     {% if drive_push.status == "success" %}
@@ -105,18 +115,6 @@
     {% endif %}
   {% endif %}
 
-{% else %}
-  <p class="muted">
-    Not generated yet. Review the preview above, adjust settings below if needed, then generate.
-    {% if cms_job_no %}
-      PDFs will also be pushed to
-      <code>1-job/{{ cms_job_no.split("-", 1)[0] }}/{{ cms_job_no }}/6-Submit/</code> on Google Drive.
-    {% endif %}
-  </p>
-  <form method="post" action="{{ url_for('job_lifecycle.generate_pdfs', job_id=job_id) }}">
-    <button type="submit" class="btn-primary">Generate PDFs</button>
-  </form>
-{% endif %}
 
 {# ── Project settings (moved from upload form) ──────────────────────── #}
 <h3 style="margin-top:2rem;">Project settings</h3>
