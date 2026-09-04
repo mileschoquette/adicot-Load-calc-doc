@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ meta.project_address or meta.project_name or "Work Order" }} — Adicot HVAC Pipeline{% endblock %}
+{% set snap = meta.cms_snapshot or {} %}
+{% block title %}{{ snap.jobNo or meta.project_address or meta.project_name or "Work Order" }} — Adicot HVAC Pipeline{% endblock %}
 {% block content %}
 {% include "_tabs.html" %}
 {% set eng = meta.engineer or {} %}
@@ -11,7 +12,7 @@
 {% endwith %}
 
 {% if source == 'cms' %}
-  <h2>{{ meta.project_address or meta.project_name or "Work Order" }}</h2>
+  <h2>{{ snap.jobNo or meta.project_address or meta.project_name or "Work Order" }}</h2>
   <p class="muted">Work order from the Adicot CMS. Edit fields below and Save, or Save &amp; Send to Client to
     email the client a link where they can fill out the rest and sign. Parse the Design Master HTML below to
     unlock the rest of the tabs.</p>
