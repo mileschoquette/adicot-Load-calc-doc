@@ -254,10 +254,12 @@ def _fee_terms(record: dict) -> dict:
     }
 
 
-# The two ways to fill in glass properties, offered by the glassMethod dropdown
-# and read by _apply_code_defaults below.
+# The ways to fill in glass properties, offered by the glassMethod dropdown and
+# read by _apply_code_defaults below. GLASS_NONE means the job has no glass at
+# all, which clears the U/SHGC cells rather than filling them.
 GLASS_DIRECT = "Enter U & SHGC directly"
 GLASS_LOOKUP = "Look up from window type"
+GLASS_NONE = "No glass"
 
 # The one list of allowed dropdown values. Drives jobs/star.html's admin
 # dropdowns AND portal.html's client-facing selects (passed in by
@@ -300,7 +302,7 @@ _FIELD_OPTIONS = {
     "reviewComplete": ["Yes", "No"],
     "skylights": ["Yes", "No"],
     "osaHighMonth": list(MONTH_NAMES),
-    "glassMethod": [GLASS_DIRECT, GLASS_LOOKUP],
+    "glassMethod": [GLASS_DIRECT, GLASS_LOOKUP, GLASS_NONE],
     "glassFrame": list(fenestration_defaults.FRAME_TYPES),
     # "Triple" has no row in C303.1.3; it's offered so real jobs can be recorded,
     # and the lookup simply returns nothing for it.
@@ -499,7 +501,11 @@ def _apply_code_defaults(fields: dict, record: dict) -> None:
             fields[key] = str(value)
 
     changed_driver = False
-    if merged("glassMethod") == GLASS_LOOKUP:
+    if merged("glassMethod") == GLASS_NONE:
+        # No glass on the job, so clear the cells instead of leaving a stale
+        # number for the DM setup and the quality check to pick up.
+        fields["glassU"] = fields["glassSHGC"] = ""
+    elif merged("glassMethod") == GLASS_LOOKUP:
         changed_driver = changed("glassFrame", "glazingType", "glazingTint", "glassMethod")
         glass = fenestration_defaults.glass_defaults(
             merged("glassFrame"), merged("glazingType"), merged("glazingTint"))
@@ -508,10 +514,13 @@ def _apply_code_defaults(fields: dict, record: dict) -> None:
             put("glassSHGC", glass["shgc"])
 
     # A door isn't glass, so this runs whatever the glass entry method is.
-    door = fenestration_defaults.door_u(merged("doorType"))
-    if door is not None:
-        changed_driver = changed("doorType")
-        put("doorU", door)
+    if merged("doorType") == fenestration_defaults.NO_DOOR:
+        fields["doorU"] = ""
+    else:
+        door = fenestration_defaults.door_u(merged("doorType"))
+        if door is not None:
+            changed_driver = changed("doorType")
+            put("doorU", door)
 
 
 @job_lifecycle.route("/job/<job_id>/star/save", methods=["POST"])
@@ -631,7 +640,9 @@ def _render_portal(record: dict, token: str, signed: bool):
     return render_template("portal.html", job=_canonical_options(record),
                            token=token, signed=signed,
                            code_checks={} if signed else _portal_code_checks(record),
-                           fee=_fee_terms(record), opts=_FIELD_OPTIONS)
+                           fee=_fee_terms(record), opts=_FIELD_OPTIONS,
+                           glass_modes=[m for m in _FIELD_OPTIONS["glassMethod"]
+                                        if m != GLASS_LOOKUP])
 
 
 def _notify_staff_signed(job_id: str, record: dict, signer_name: str, signer_title: str) -> None:
@@ -680,6 +691,11 @@ def portal(token: str):
                 canonical_key = key[0] if isinstance(key, (list, tuple)) else key
                 if canonical_key in request.form:
                     posted_fields[canonical_key] = request.form.get(canonical_key, "")
+        # Same code-default fill as the admin save, so "No glass" and a "None"
+        # door clear their U cells the moment the client picks them. The client
+        # has no frame/glazing/tint inputs, so the lookup mode only ever fills a
+        # blank here — a number they typed is never overwritten.
+        _apply_code_defaults(posted_fields, record)
 
         action = request.form.get("action", "sign")
 

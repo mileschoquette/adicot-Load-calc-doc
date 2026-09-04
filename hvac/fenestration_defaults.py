@@ -61,10 +61,15 @@ DOOR_U: dict[str, float] = {
     "Insulated, nonmetal edge, max 45% glazing, any glazing double pane": 0.35,
 }
 
+# "The job has no opaque door", offered as a doorType choice. Distinct from a
+# door type with no row in the table: this one means there is nothing to rate,
+# so the caller clears the U cell instead of leaving it for the engineer.
+NO_DOOR = "None"
+
 FRAME_TYPES = list(GLAZED_U) + [GLAZED_BLOCK]
 GLAZING_TYPES = ["Single", "Double"]
 TINTS = ["Clear", "Tinted"]
-DOOR_TYPES = list(DOOR_U)
+DOOR_TYPES = list(DOOR_U) + [NO_DOOR]
 
 
 def glass_defaults(frame: str, glazing: str, tint: str) -> Optional[dict]:
