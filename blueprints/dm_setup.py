@@ -35,7 +35,12 @@ _WIX_MASS_CLASS_MAP = {
              "Steel stud + batt": 2, "Steel stud + rigid insul": 2, "Wood frame": 5},
     "roof": {"Steel deck": 2, "Metal frame": 2, "Concrete deck": 10,
              "Wood deck": 4, "Wood frame": 4},
-    "door": {"Insulated Metal": 2, "Hollow metal": 2, "Solid wood": 5},
+    # Both the C303.1.3(2) door names the work order now offers and the older
+    # names still sitting on existing records, so neither loses its mass class.
+    "door": {"Uninsulated Metal": 2, "Insulated Metal (Rolling)": 2,
+             "Insulated Metal (Other)": 2, "Wood": 5,
+             "Insulated, nonmetal edge, max 45% glazing, any glazing double pane": 5,
+             "Insulated Metal": 2, "Hollow metal": 2, "Solid wood": 5},
 }
 
 

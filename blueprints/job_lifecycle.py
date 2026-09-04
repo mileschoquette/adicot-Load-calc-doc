@@ -20,6 +20,7 @@ from flask import (Blueprint, abort, flash, redirect, render_template,
 from werkzeug.utils import secure_filename
 
 from hvac import hvac_pipeline as hp
+from hvac import fenestration_defaults
 from hvac import lpd_max
 from hvac import validators
 from integrations import email_client
@@ -126,17 +127,21 @@ _WORK_ORDER_SECTIONS = [
         ("Partition R-Value", "partRValue"),
         ("Floor Type", "floorType"),
         ("Floor R-Value", "floorRValue"),
+        ("Glass Entry Method", "glassMethod"),
+        ("Glass Frame", "glassFrame"),
+        ("Glazing Type", "glazingType"),
+        ("Glazing Tint", "glazingTint"),
         ("Glass U-Factor", "glassU"),
         ("Glass SHGC", "glassSHGC"),
         ("Glass Operable U", "glassOperU"),
         ("Glass Operable SHGC", "glassOperSHGC"),
         ("Sliding Door U", ["glassSGDU", "glassSgdU"]),
         ("Sliding Door SHGC", ["glassSGDSHGC", "glassSgdSHGC"]),
-        ("Glass Frame", "glassFrame"),
-        ("Glazing Type", "glazingType"),
-        ("Glazing Tint", "glazingTint"),
         ("Skylights", "skylights"),
+        ("Skylight U", "skylightU"),
+        ("Skylight SHGC", "skylightSHGC"),
         ("Opaque Door Type", "doorType"),
+        ("Opaque Door U", "doorU"),
     ]),
     ("Internal Loads", [
         ("Occupancy Type", "occupancyType"),
@@ -255,6 +260,11 @@ def _fee_terms(record: dict) -> dict:
     }
 
 
+# The two ways to fill in glass properties, offered by the glassMethod dropdown
+# and read by _apply_code_defaults below.
+GLASS_DIRECT = "Enter U & SHGC directly"
+GLASS_LOOKUP = "Look up from window type"
+
 # The one list of allowed dropdown values. Drives jobs/star.html's admin
 # dropdowns AND portal.html's client-facing selects (passed in by
 # _render_portal), so the two pages can no longer drift apart — they used to
@@ -282,7 +292,7 @@ _FIELD_OPTIONS = {
     "partConstruction": ["NA", "Metal stud (steel frame)", "Wood stud", "Concrete Block / CMU"],
     "floorType": ["Slab on grade", "Floor over conditioned space", "Floor over unconditioned space",
                   "Wood frame over unconditioned space", "Elevated / exterior exposure"],
-    "doorType": ["Insulated Metal", "Hollow metal", "Solid wood", "Storefront/glass", "None"],
+    "doorType": list(fenestration_defaults.DOOR_TYPES),
     "occupancyType": ["Dining / Fast food", "Food prep / Kitchen", "Office", "Retail", "Medical office",
                        "Assembly / Classrooms", "Warehouse", "Residential", "Other"],
     "infiltration": ["Tight", "Average", "Loose"],
@@ -296,6 +306,12 @@ _FIELD_OPTIONS = {
     "reviewComplete": ["Yes", "No"],
     "skylights": ["Yes", "No"],
     "osaHighMonth": list(MONTH_NAMES),
+    "glassMethod": [GLASS_DIRECT, GLASS_LOOKUP],
+    "glassFrame": list(fenestration_defaults.FRAME_TYPES),
+    # "Triple" has no row in C303.1.3; it's offered so real jobs can be recorded,
+    # and the lookup simply returns nothing for it.
+    "glazingType": list(fenestration_defaults.GLAZING_TYPES) + ["Triple"],
+    "glazingTint": list(fenestration_defaults.TINTS),
     "projectState": _US_STATES,
 }
 
@@ -464,6 +480,56 @@ def job_star(job_id: str):
     )
 
 
+# ─── Code-default fenestration fill ───────────────────────────────────
+# Which numeric field each lookup result feeds. Table C303.1.3(1) gives one
+# U-factor for "window and glass door" combined, so fixed, operable and sliding
+# door all take the same pair.
+_GLASS_TARGETS = [("glassU", "glassSHGC"), ("glassOperU", "glassOperSHGC"),
+                  ("glassSGDU", "glassSGDSHGC")]
+
+
+def _apply_code_defaults(fields: dict, record: dict) -> None:
+    """Fill U/SHGC from the C303.1.3 tables, in place, before the save writes.
+
+    Only touches a value whose driving input changed on this save, or that is
+    currently blank. That's what keeps a hand-edited number: change the window
+    type and the figures follow, overtype one and it survives every later save
+    until the type changes again. Recomputing unconditionally would silently
+    revert every manual override."""
+    def merged(key):
+        return (fields.get(key, record.get(key)) or "").strip()
+
+    def changed(*keys):
+        return any(k in fields and (fields[k] or "").strip() != (record.get(k) or "").strip()
+                   for k in keys)
+
+    def put(key, value):
+        if changed_driver or not merged(key):
+            fields[key] = str(value)
+
+    if merged("glassMethod") == GLASS_LOOKUP:
+        frame, glazing, tint = merged("glassFrame"), merged("glazingType"), merged("glazingTint")
+        changed_driver = changed("glassFrame", "glazingType", "glazingTint", "glassMethod")
+
+        glass = fenestration_defaults.glass_defaults(frame, glazing, tint)
+        if glass:
+            for u_key, shgc_key in _GLASS_TARGETS:
+                put(u_key, glass["u"])
+                put(shgc_key, glass["shgc"])
+
+        # Skylight U differs sharply from the window value for the same frame.
+        sky = fenestration_defaults.skylight_defaults(frame, glazing, tint)
+        if sky and merged("skylights") == "Yes":
+            put("skylightU", sky["u"])
+            put("skylightSHGC", sky["shgc"])
+
+    # A door isn't glass, so this runs whatever the glass entry method is.
+    door = fenestration_defaults.door_u(merged("doorType"))
+    if door is not None:
+        changed_driver = changed("doorType")
+        put("doorU", door)
+
+
 @job_lifecycle.route("/job/<job_id>/star/save", methods=["POST"])
 @_require_auth
 def job_star_save(job_id: str):
@@ -484,6 +550,7 @@ def job_star_save(job_id: str):
                 fields[canonical_key] = request.form.get(canonical_key, "")
 
     record = _cms.get_project(job_id) or {}
+    _apply_code_defaults(fields, record)
     client_email = (record.get("clientEmail") or "").strip()
     send_link = False
     if action == "save_and_send":

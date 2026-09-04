@@ -100,6 +100,7 @@ SHEET_COLUMNS = [
     "osaLowDry", "osaDailyRange",
     "awardPercent",
     "osaHighMonth", "osaHighDry", "osaHighWet",
+    "glassMethod", "skylightU", "skylightSHGC", "doorU",
 ]
 _COL_INDEX = {name: i for i, name in enumerate(SHEET_COLUMNS)}
 
