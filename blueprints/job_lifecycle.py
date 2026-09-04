@@ -131,15 +131,9 @@ _WORK_ORDER_SECTIONS = [
         ("Glass Frame", "glassFrame"),
         ("Glazing Type", "glazingType"),
         ("Glazing Tint", "glazingTint"),
-        ("Glass U-Factor", "glassU"),
-        ("Glass SHGC", "glassSHGC"),
-        ("Glass Operable U", "glassOperU"),
-        ("Glass Operable SHGC", "glassOperSHGC"),
-        ("Sliding Door U", ["glassSGDU", "glassSgdU"]),
-        ("Sliding Door SHGC", ["glassSGDSHGC", "glassSgdSHGC"]),
+        ("Glass U-Factor (all glass)", "glassU"),
+        ("Glass SHGC (all glass)", "glassSHGC"),
         ("Skylights", "skylights"),
-        ("Skylight U", "skylightU"),
-        ("Skylight SHGC", "skylightSHGC"),
         ("Opaque Door Type", "doorType"),
         ("Opaque Door U", "doorU"),
     ]),
@@ -481,15 +475,12 @@ def job_star(job_id: str):
 
 
 # ─── Code-default fenestration fill ───────────────────────────────────
-# Which numeric field each lookup result feeds. Table C303.1.3(1) gives one
-# U-factor for "window and glass door" combined, so fixed, operable and sliding
-# door all take the same pair.
-_GLASS_TARGETS = [("glassU", "glassSHGC"), ("glassOperU", "glassOperSHGC"),
-                  ("glassSGDU", "glassSGDSHGC")]
-
-
 def _apply_code_defaults(fields: dict, record: dict) -> None:
     """Fill U/SHGC from the C303.1.3 tables, in place, before the save writes.
+
+    One glass U and one glass SHGC cover the whole job — Table C303.1.3(1) gives
+    a single U-factor for "window and glass door" combined, and projects here run
+    one glass type throughout.
 
     Only touches a value whose driving input changed on this save, or that is
     currently blank. That's what keeps a hand-edited number: change the window
@@ -507,21 +498,14 @@ def _apply_code_defaults(fields: dict, record: dict) -> None:
         if changed_driver or not merged(key):
             fields[key] = str(value)
 
+    changed_driver = False
     if merged("glassMethod") == GLASS_LOOKUP:
-        frame, glazing, tint = merged("glassFrame"), merged("glazingType"), merged("glazingTint")
         changed_driver = changed("glassFrame", "glazingType", "glazingTint", "glassMethod")
-
-        glass = fenestration_defaults.glass_defaults(frame, glazing, tint)
+        glass = fenestration_defaults.glass_defaults(
+            merged("glassFrame"), merged("glazingType"), merged("glazingTint"))
         if glass:
-            for u_key, shgc_key in _GLASS_TARGETS:
-                put(u_key, glass["u"])
-                put(shgc_key, glass["shgc"])
-
-        # Skylight U differs sharply from the window value for the same frame.
-        sky = fenestration_defaults.skylight_defaults(frame, glazing, tint)
-        if sky and merged("skylights") == "Yes":
-            put("skylightU", sky["u"])
-            put("skylightSHGC", sky["shgc"])
+            put("glassU", glass["u"])
+            put("glassSHGC", glass["shgc"])
 
     # A door isn't glass, so this runs whatever the glass entry method is.
     door = fenestration_defaults.door_u(merged("doorType"))

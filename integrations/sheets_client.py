@@ -82,6 +82,10 @@ SHEET_COLUMNS = [
     "roofRValue", "insulPosition", "suspCeiling", "atticCond", "ceilingHeight",
     "wallFinish", "wallConstruction", "wallColor", "wallRValue", "wallHeight",
     "partConstruction", "partRValue", "floorType", "floorRValue", "glassU",
+    # glassOperU..glassSGDSHGC and skylightU/skylightSHGC below are retired: the
+    # work order now carries one glass U and one glass SHGC for all glass. The
+    # names stay because rows are read and written positionally, so dropping a
+    # column would shift every later one.
     "glassSHGC", "glassOperU", "glassOperSHGC", "glassSGDU", "glassSGDSHGC",
     "glassFrame", "glazingType", "glazingTint", "skylights", "doorType",
     "occupancyType", "lpdSpaceType", "lightingWattsPerSF", "equipWattsPerSF",

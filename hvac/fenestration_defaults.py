@@ -4,6 +4,10 @@ Source: IECC / Florida Building Code, Energy Conservation, Tables C303.1.3(1),
 C303.1.3(2) and C303.1.3(3) — the prescriptive defaults used when a project has
 no NFRC-rated product data. Transcribed 2026-09-04.
 
+One U and one SHGC serve the whole job: projects here run a single glass type
+throughout, and C303.1.3(1) already gives one U-factor for windows and glass
+doors combined.
+
 Same contract as hvac/lpd_max.py: an input with no row in the table resolves to
 None rather than a guessed value, and the caller skips the fill instead of
 substituting a wrong figure. That matters here because the tables only cover
@@ -21,7 +25,9 @@ from typing import Optional
 # Table C303.1.3(1) — default glazed window, glass door and skylight U-factors.
 # {frame type: {(assembly, glazing): U}}. Glazed Block is listed in the table as
 # a frame type with a single value and no double-glazed or skylight column, so
-# it's handled separately in the lookups below rather than sitting here.
+# it's handled separately in the lookup below rather than sitting here. The
+# ("skylight", ...) rows are transcribed but unread: the work order carries one
+# U/SHGC pair for all glass, so nothing looks up a skylight-specific figure.
 GLAZED_U: dict[str, dict[tuple[str, str], float]] = {
     "Metal":                   {("window", "Single"): 1.2,  ("window", "Double"): 0.8,
                                 ("skylight", "Single"): 2.0, ("skylight", "Double"): 1.3},
@@ -61,31 +67,15 @@ TINTS = ["Clear", "Tinted"]
 DOOR_TYPES = list(DOOR_U)
 
 
-def _defaults(assembly: str, frame: str, glazing: str, tint: str) -> Optional[dict]:
-    """Shared body of glass_defaults/skylight_defaults."""
+def glass_defaults(frame: str, glazing: str, tint: str) -> Optional[dict]:
+    """{'u', 'shgc'} for glass, or None when any input has no row in the table
+    (blank, "Triple", "Low-E", an unrecognised frame, ...)."""
     frame, glazing, tint = (frame or "").strip(), (glazing or "").strip(), (tint or "").strip()
     if frame == GLAZED_BLOCK:
-        # No skylight row exists for glazed block.
-        if assembly != "window":
-            return None
         return {"u": GLAZED_BLOCK_U, "shgc": GLAZED_BLOCK_SHGC}
-    u = GLAZED_U.get(frame, {}).get((assembly, glazing))
+    u = GLAZED_U.get(frame, {}).get(("window", glazing))
     shgc = GLAZED_SHGC.get((glazing, tint))
-    if u is None or shgc is None:
-        return None
-    return {"u": u, "shgc": shgc}
-
-
-def glass_defaults(frame: str, glazing: str, tint: str) -> Optional[dict]:
-    """{'u', 'shgc'} for a window or glass door, or None when any input has no
-    row in the table (blank, "Triple", "Low-E", an unrecognised frame, ...)."""
-    return _defaults("window", frame, glazing, tint)
-
-
-def skylight_defaults(frame: str, glazing: str, tint: str) -> Optional[dict]:
-    """{'u', 'shgc'} for a skylight, or None. Note skylight U-factors are much
-    higher than the window values for the same frame."""
-    return _defaults("skylight", frame, glazing, tint)
+    return None if u is None or shgc is None else {"u": u, "shgc": shgc}
 
 
 def door_u(door_type: str) -> Optional[float]:
